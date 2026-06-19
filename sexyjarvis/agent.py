@@ -12,6 +12,9 @@ from .cost import estimate_cost
 from .tools import DESTRUCTIVE_TOOLS, ToolRunner, get_tool_schemas, is_dangerous_command
 from .ui import UI
 
+_MAX_CURSOR_HISTORY = 10
+_COMPACT_THRESHOLD = 24
+
 
 def _summarize_args(name: str, args: dict) -> str:
     if name == "execute_bash":
@@ -43,10 +46,12 @@ class Agent:
             config.active_provider = provider
 
         def _stream_text(chunk: str) -> None:
-            ui.stream_chunk(chunk)
+            if ui.verbose:
+                ui.stream_chunk(chunk)
 
         def _stream_thinking(chunk: str) -> None:
-            ui.thinking(chunk)
+            if ui.verbose:
+                ui.thinking(chunk)
 
         self.llm = RoutedLLMClient(
             config,
@@ -103,140 +108,164 @@ class Agent:
         if self.llm.uses_cursor_turns:
             try:
                 self.llm.run_turn_cursor(user_input, self.session.system)
+                self._trim_session_history()
+                self._announce_turn_cost(start_in, start_out)
                 return
             except _FallbackSignal:
                 pass  # retry below on Anthropic/local tool loop
 
-        iterations = 0
-        provider_retries = 0
+        self.ui.activity_begin()
+        try:
+            iterations = 0
+            provider_retries = 0
 
-        while iterations < self.config.max_iterations:
-            iterations += 1
-            try:
-                with self.ui.status("Thinking..."):
-                    response = self.llm.complete(
-                        system=self.session.system,
-                        messages=self.session.messages,
-                        tools=get_tool_schemas(self.config, mcp_registry=getattr(self.runner, "mcp", None)),
-                    )
-            except LLMError as e:
-                if provider_retries == 0 and self.llm.try_fallback_from_anthropic(e):
-                    provider_retries += 1
-                    iterations -= 1
-                    continue
-                self.ui.error(str(e))
-                return
+            while iterations < self.config.max_iterations:
+                iterations += 1
+                try:
+                    with self.ui.status("Thinking..."):
+                        response = self.llm.complete(
+                            system=self.session.system,
+                            messages=self.session.messages,
+                            tools=get_tool_schemas(self.config, mcp_registry=getattr(self.runner, "mcp", None)),
+                        )
+                except LLMError as e:
+                    if provider_retries == 0 and self.llm.try_fallback_from_anthropic(e):
+                        provider_retries += 1
+                        iterations -= 1
+                        continue
+                    self.ui.error(str(e))
+                    return
 
-            # Capture token usage if the SDK returned it.
-            usage = getattr(response, "usage", None)
-            if usage is not None:
-                self.session.add_usage(
-                    input_t=getattr(usage, "input_tokens", 0) or 0,
-                    output_t=getattr(usage, "output_tokens", 0) or 0,
-                    cache_r=getattr(usage, "cache_read_input_tokens", 0) or 0,
-                    cache_w=getattr(usage, "cache_creation_input_tokens", 0) or 0,
-                )
-
-            # Record the assistant message (content blocks) verbatim.
-            assistant_content = []
-            tool_uses = []
-            text_chunks = []
-            for block in response.content:
-                btype = getattr(block, "type", None)
-                if btype == "thinking":
-                    thought = getattr(block, "thinking", "") or ""
-                    if thought:
-                        self.ui.thinking(thought)
-                    assistant_content.append({"type": "thinking", "thinking": thought})
-                elif btype == "text":
-                    text_chunks.append(block.text)
-                    assistant_content.append({"type": "text", "text": block.text})
-                elif btype == "tool_use":
-                    tool_uses.append(block)
-                    assistant_content.append(
-                        {
-                            "type": "tool_use",
-                            "id": block.id,
-                            "name": block.name,
-                            "input": block.input,
-                        }
+                # Capture token usage if the SDK returned it.
+                usage = getattr(response, "usage", None)
+                if usage is not None:
+                    self.session.add_usage(
+                        input_t=getattr(usage, "input_tokens", 0) or 0,
+                        output_t=getattr(usage, "output_tokens", 0) or 0,
+                        cache_r=getattr(usage, "cache_read_input_tokens", 0) or 0,
+                        cache_w=getattr(usage, "cache_creation_input_tokens", 0) or 0,
                     )
 
-            self.session.add_raw("assistant", assistant_content)
+                # Record the assistant message (content blocks) verbatim.
+                assistant_content = []
+                tool_uses = []
+                text_chunks = []
+                for block in response.content:
+                    btype = getattr(block, "type", None)
+                    if btype == "thinking":
+                        thought = getattr(block, "thinking", "") or ""
+                        if thought:
+                            self.ui.thinking(thought)
+                        assistant_content.append({"type": "thinking", "thinking": thought})
+                    elif btype == "text":
+                        text_chunks.append(block.text)
+                        assistant_content.append({"type": "text", "text": block.text})
+                    elif btype == "tool_use":
+                        tool_uses.append(block)
+                        assistant_content.append(
+                            {
+                                "type": "tool_use",
+                                "id": block.id,
+                                "name": block.name,
+                                "input": block.input,
+                            }
+                        )
 
-            if text_chunks and not getattr(self.config, "stream", False):
-                self.ui.assistant_text("\n".join(text_chunks))
-            elif text_chunks:
-                # Streaming printed inline; add a newline boundary.
-                self.ui.print("")
+                self.session.add_raw("assistant", assistant_content)
 
-            stop_reason = getattr(response, "stop_reason", None)
-            if not tool_uses:
-                # Model produced a final answer with no tool calls.
-                if text_chunks and self.on_task_complete:
-                    self.on_task_complete("\n".join(text_chunks))
-                self._announce_turn_cost(start_in, start_out)
-                return
+                if text_chunks and not getattr(self.config, "stream", False):
+                    self.ui.assistant_text("\n".join(text_chunks))
+                elif text_chunks:
+                    self.ui.print("")
 
-            # Execute each tool call and gather results.
-            tool_results = []
-            finished = False
-            for tu in tool_uses:
-                name = tu.name
-                args = tu.input or {}
-                self.ui.tool_call(name, _summarize_args(name, args))
+                if not tool_uses:
+                    if text_chunks and self.on_task_complete:
+                        self.on_task_complete("\n".join(text_chunks))
+                    self._announce_turn_cost(start_in, start_out)
+                    self._maybe_compact_history()
+                    return
 
-                if not self._confirm(name, args):
+                tool_results = []
+                finished = False
+                for tu in tool_uses:
+                    name = tu.name
+                    args = tu.input or {}
+                    self.ui.tool_call(name, _summarize_args(name, args))
+
+                    if not self._confirm(name, args):
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tu.id,
+                                "content": "User declined to run this action.",
+                                "is_error": True,
+                            }
+                        )
+                        continue
+
+                    if name == "finish":
+                        summary = args.get("summary", "Task complete.")
+                        self.ui.rule("Task complete")
+                        self.ui.info(summary)
+                        if self.on_task_complete:
+                            self.on_task_complete(summary)
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tu.id,
+                                "content": summary,
+                            }
+                        )
+                        finished = True
+                        continue
+
+                    result = self.runner.run(name, args)
+                    self.ui.tool_result(name, result.content, result.is_error, lang=result.lang)
+                    if result.diff:
+                        self.ui.show_diff(result.diff)
                     tool_results.append(
                         {
                             "type": "tool_result",
                             "tool_use_id": tu.id,
-                            "content": "User declined to run this action.",
-                            "is_error": True,
+                            "content": result.content or "(no output)",
+                            "is_error": result.is_error,
                         }
                     )
-                    continue
 
-                if name == "finish":
-                    summary = args.get("summary", "Task complete.")
-                    self.ui.rule("Task complete")
-                    self.ui.info(summary)
-                    if self.on_task_complete:
-                        self.on_task_complete(summary)
-                    tool_results.append(
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": tu.id,
-                            "content": summary,
-                        }
-                    )
-                    finished = True
-                    continue
+                self.session.add_raw("user", tool_results)
 
-                result = self.runner.run(name, args)
-                self.ui.tool_result(name, result.content, result.is_error, lang=result.lang)
-                if result.diff:
-                    self.ui.show_diff(result.diff)
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tu.id,
-                        "content": result.content or "(no output)",
-                        "is_error": result.is_error,
-                    }
-                )
+                if finished:
+                    self._announce_turn_cost(start_in, start_out)
+                    self._maybe_compact_history()
+                    return
 
-            self.session.add_raw("user", tool_results)
+            self.ui.error(
+                f"Reached max iterations ({self.config.max_iterations}). Pausing. "
+                "Send another message to continue, or raise the limit with --max-iterations."
+            )
+            self._announce_turn_cost(start_in, start_out)
+        finally:
+            self.ui.activity_end()
 
-            if finished:
-                self._announce_turn_cost(start_in, start_out)
-                return
+    def _trim_session_history(self) -> None:
+        if len(self.session.messages) > _MAX_CURSOR_HISTORY:
+            self.session.messages = self.session.messages[-_MAX_CURSOR_HISTORY:]
 
-        self.ui.error(
-            f"Reached max iterations ({self.config.max_iterations}). Pausing. "
-            "Send another message to continue, or raise the limit with --max-iterations."
-        )
-        self._announce_turn_cost(start_in, start_out)
+    def _maybe_compact_history(self) -> None:
+        if len(self.session.messages) < _COMPACT_THRESHOLD:
+            return
+        if self.llm.uses_cursor_turns:
+            self._trim_session_history()
+            return
+        from .compact import compact_session
+
+        try:
+            with self.ui.status("Compacting history..."):
+                ok, msg = compact_session(self.session, self.llm)
+            if ok:
+                self.ui.info(msg)
+        except Exception:
+            self._trim_session_history()
 
     def _announce_turn_cost(self, start_in: int, start_out: int) -> None:
         delta_in = self.session.input_tokens - start_in

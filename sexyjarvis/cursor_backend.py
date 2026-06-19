@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Callable
 
 from .config import Config
-from .cursor_patch import apply as _apply_cursor_windows_patch
+from .cursor_patch import apply as _apply_cursor_windows_patch, close_with_timeout
 
 _apply_cursor_windows_patch()
 
@@ -98,11 +98,8 @@ class CursorRunner:
         agent = self._agent
         self._agent = None
         self._system_sent = False
-        try:
-            if agent is not None:
-                agent.close()
-        except Exception:
-            pass
+        if agent is not None:
+            close_with_timeout(agent.close)
 
     def reset(self) -> None:
         self.stop()
@@ -130,22 +127,36 @@ class CursorRunner:
             prompt = f"{system}\n\n---\n\nUser task: {user_input}"
             self._system_sent = True
 
+        run = None
+        self.ui.activity_begin()
         try:
             run = self._agent.send(prompt)
             summary_parts: list[str] = []
+            assistant_parts: list[str] = []
+            stream = getattr(self.config, "stream", True)
+            verbose = getattr(self.ui, "verbose", False)
 
             for message in run.messages():
                 mtype = getattr(message, "type", None)
                 if mtype == "assistant":
                     text = _extract_assistant_text(message)
                     if text:
-                        self.ui.assistant_text(text)
-                        summary_parts.append(text)
+                        assistant_parts.append(text)
+                        if stream and verbose:
+                            self.ui.stream_chunk(text)
                 elif mtype == "tool_call":
                     name = getattr(message, "name", "tool")
                     args = getattr(message, "args", {}) or {}
                     preview = str(args)[:200]
                     self.ui.tool_call(name, preview)
+
+            if assistant_parts:
+                full_text = "".join(assistant_parts)
+                summary_parts.append(full_text)
+                if stream and verbose:
+                    self.ui.print("")
+                elif verbose:
+                    self.ui.assistant_text(full_text)
 
             result = run.wait()
             if getattr(result, "status", None) == "error":
@@ -160,10 +171,19 @@ class CursorRunner:
                 if self.on_task_complete:
                     self.on_task_complete(final)
 
+        except KeyboardInterrupt:
+            if run is not None:
+                try:
+                    run.cancel()
+                except Exception:
+                    pass
+            raise
         except Exception as exc:
             if is_cursor_quota_error(exc):
                 raise CursorQuotaError(str(exc)) from exc
             raise CursorBackendError(str(exc)) from exc
+        finally:
+            self.ui.activity_end()
 
 
 def _extract_assistant_text(message) -> str:

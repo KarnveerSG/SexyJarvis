@@ -852,6 +852,7 @@ class ToolRunner:
             child_cfg.workspace, "",
             codegraph_enabled=child_cfg.codegraph_enabled,
             rtk_enabled=child_cfg.rtk_enabled,
+            caveman_enabled=getattr(child_cfg, "caveman_enabled", True),
         )
         sub_session = Session(system=system)
         # Silent UI: a degenerate UI that swallows output.

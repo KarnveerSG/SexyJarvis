@@ -29,8 +29,41 @@ _SLASH_COMMANDS = [
     "/commit", "/history", "/resume", "/commands", "/retry", "/export",
     "/bash", "/context", "/redo", "/test", "/pr",
     "/branch", "/stash", "/grep", "/budget", "/find", "/secrets",
-    "/stats", "/sandbox",
+    "/stats", "/sandbox", "/caveman", "/verbose", "/voicestyle",
 ]
+
+
+_TOOL_STATUS_LABELS: dict[str, str] = {
+    "read_file": "reading...",
+    "write_file": "writing...",
+    "edit_file": "writing...",
+    "multi_edit": "writing...",
+    "apply_patch": "writing...",
+    "execute_bash": "running...",
+    "list_dir": "exploring...",
+    "glob": "searching...",
+    "grep": "searching...",
+    "codegraph_explore": "thinking...",
+    "codegraph_search": "searching...",
+    "codegraph_node": "reading...",
+    "codegraph_callers": "searching...",
+    "finish": "finishing...",
+    # Cursor SDK tool names
+    "read": "reading...",
+    "write": "writing...",
+    "edit": "writing...",
+    "shell": "running...",
+    "search": "searching...",
+    "glob_file_search": "searching...",
+    "list_dir": "exploring...",
+}
+
+
+def _tool_status_label(name: str) -> str:
+    key = (name or "tool").lower()
+    if key.startswith("codegraph_"):
+        return _TOOL_STATUS_LABELS.get(key, "thinking...")
+    return _TOOL_STATUS_LABELS.get(key, "working...")
 
 
 DEFAULT_THEME = {
@@ -47,10 +80,12 @@ DEFAULT_THEME = {
 
 
 class UI:
-    def __init__(self, color: bool = True, theme: dict | None = None):
+    def __init__(self, color: bool = True, theme: dict | None = None, verbose: bool = False):
         self.console = Console(highlight=False, force_terminal=True) if (_HAS_RICH and color) else None
         self._spinner_active = False
+        self.verbose = verbose
         self.theme = {**DEFAULT_THEME, **(theme or {})}
+        self._activity_label: str | None = None
         self._pt_session = None
         try:
             from prompt_toolkit import PromptSession
@@ -111,6 +146,28 @@ class UI:
             print(info)
             print()
 
+    # ---- activity status (single in-place line) --------------------
+    def activity_begin(self) -> None:
+        self._activity_label = None
+
+    def activity_end(self) -> None:
+        if self._activity_label is None:
+            return
+        if self.console:
+            self.console.print()
+        else:
+            print()
+        self._activity_label = None
+
+    def _set_activity(self, label: str) -> None:
+        if label == self._activity_label:
+            return
+        self._activity_label = label
+        if self.console:
+            self.console.print(f"[dim]{label}[/dim]", end="\r", highlight=False)
+        else:
+            print(f"\r{label}", end="", flush=True)
+
     # ---- conversation rendering -------------------------------------
     def stream_chunk(self, chunk: str):
         """Print a streaming text delta in-place (no panel/markdown)."""
@@ -139,12 +196,18 @@ class UI:
             print(f"\n{prefix}\n{text}\n")
 
     def thinking(self, text: str):
+        if not self.verbose:
+            self._set_activity("thinking...")
+            return
         if self.console:
             self.console.print(f"[blue dim]💭 {text}[/blue dim]")
         else:
             print(f"... {text}")
 
     def tool_call(self, name: str, summary: str):
+        if not self.verbose:
+            self._set_activity(_tool_status_label(name))
+            return
         icons = {
             "execute_bash": "🔧",
             "read_file": "📖",
@@ -165,6 +228,8 @@ class UI:
             print(f"{label}  {summary}")
 
     def tool_result(self, name: str, content: str, is_error: bool, lang: str | None = None):
+        if not self.verbose and not is_error:
+            return
         preview = content if len(content) <= 1200 else content[:1200] + "\n[...truncated]"
         if self.console:
             # Syntax highlighting: explicit lang wins over heuristics.
@@ -301,11 +366,10 @@ class UI:
         poll_speech: Optional[Callable[[], Optional[str]]] = None,
     ) -> str:
         """Wait for typed input or a push-to-talk transcription with timeout."""
-        hint = f" (hold {hotkey_hint} to speak)" if hotkey_hint else ""
         if self.console:
-            self.console.print(f"[bold green]you ›[/bold green][dim]{hint}[/dim] ", end="", highlight=False)
+            self.console.print("[bold green]you › [/bold green]", end="", highlight=False)
         else:
-            print(f"you ›{hint} ", end="", flush=True)
+            print("you › ", end="", flush=True)
 
         result_queue: queue.Queue[tuple[str, str]] = queue.Queue()
         reader_thread_started = threading.Event()

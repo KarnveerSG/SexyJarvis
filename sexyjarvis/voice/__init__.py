@@ -8,6 +8,7 @@ from typing import Callable
 
 from .ptt import PushToTalkInput
 from .settings import VoiceSettings, load_voice_settings
+from .styles import apply_voice_style
 from .tts import TextToSpeechError, format_completion_message, speak
 
 
@@ -53,8 +54,16 @@ class VoiceStack:
     def announce_task_complete(self, summary: str) -> None:
         if not self.settings.tts_enabled:
             return
-        message = format_completion_message(summary)
+        message = format_completion_message(summary, style=self.settings.tts_style)
+        self._speak_async(message)
 
+    def apply_voice_style(self, name: str, *, preview: bool = True) -> str:
+        style = apply_voice_style(self.settings, name)
+        if preview and self.settings.tts_enabled:
+            self._speak_async(style.preview)
+        return style.label
+
+    def _speak_async(self, message: str) -> None:
         def _run() -> None:
             try:
                 speak(

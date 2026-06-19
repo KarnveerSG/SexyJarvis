@@ -21,3 +21,12 @@ THINKING_PROMPT = (
     "Before tool calls, internal reasoning must be caveman ultra: "
     "fragments only, no full sentences, no filler — minimum tokens."
 )
+
+NORMAL_STYLE = """
+## Communication
+Respond in clear, professional prose. Complete sentences. No forced terseness or caveman style.
+"""
+
+NORMAL_THINKING_PROMPT = (
+    "Before tool calls, reason briefly and clearly about the next step."
+)

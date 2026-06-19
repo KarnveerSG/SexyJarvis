@@ -53,9 +53,12 @@ Slash commands:
   /load <file>     Load a conversation from a JSON file
   /tokens          Rough token estimate of current context
   /voice [on|off]  Toggle spoken task-completion announcements
+  /voicestyle [name]  Switch TTS voice preset (intimate, playful, bright)
   /speech [on|off] Toggle push-to-talk speech input
   /hotkey          Show the push-to-talk hotkey
   /rtk [on|off]    Toggle RTK compact shell output
+  /caveman [on|off] Toggle terse caveman output style
+  /verbose [on|off] Toggle detailed tool-call output
   /codegraph [on|off]  Toggle CodeGraph tools / show status
   /cost            Show cumulative token usage and estimated cost
   /compact         Summarize prior turns to free context
@@ -116,6 +119,20 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _rebuild_system(cfg, session, no_memory: bool) -> list[Path]:
+    mem_text, loaded = ("", [])
+    if not no_memory:
+        mem_text, loaded = build_memory_section(cfg.workspace)
+    session.system = build_system_prompt(
+        cfg.workspace,
+        mem_text,
+        codegraph_enabled=cfg.codegraph_enabled,
+        rtk_enabled=cfg.rtk_enabled,
+        caveman_enabled=cfg.caveman_enabled,
+    )
+    return loaded
+
+
 def _make_system(cfg, no_memory: bool, ui: UI) -> tuple[str, list[Path]]:
     mem_text, loaded = ("", [])
     if not no_memory:
@@ -125,6 +142,7 @@ def _make_system(cfg, no_memory: bool, ui: UI) -> tuple[str, list[Path]]:
         mem_text,
         codegraph_enabled=cfg.codegraph_enabled,
         rtk_enabled=cfg.rtk_enabled,
+        caveman_enabled=cfg.caveman_enabled,
     )
     return system, loaded
 
@@ -245,11 +263,7 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
             for p in paths
         )
         if memory_changed:
-            mt, loaded = build_memory_section(cfg.workspace)
-            session.system = build_system_prompt(
-                cfg.workspace, mt,
-                codegraph_enabled=cfg.codegraph_enabled, rtk_enabled=cfg.rtk_enabled,
-            )
+            loaded = _rebuild_system(cfg, session, no_memory)
             ui.info(f"📝 Reloaded instructions ({len(loaded)} file(s)).")
         if any("ignore" in p for p in paths):
             agent.runner._ignore = None  # reset; lazy reload on next use
@@ -380,13 +394,7 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
                         ui.info(f"Claude API fallback is {state} (model: {cfg.fallback_model}).")
                     continue
                 if cmd == "memory":
-                    mem_text, loaded = build_memory_section(cfg.workspace)
-                    session.system = build_system_prompt(
-                        cfg.workspace,
-                        mem_text,
-                        codegraph_enabled=cfg.codegraph_enabled,
-                        rtk_enabled=cfg.rtk_enabled,
-                    )
+                    loaded = _rebuild_system(cfg, session, no_memory)
                     if loaded:
                         ui.info("Loaded: " + ", ".join(str(p) for p in loaded))
                     else:
@@ -472,6 +480,32 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
                     if voice.settings.voicetype_settings_path:
                         ui.info(f"VoiceType settings: {voice.settings.voicetype_settings_path}")
                     continue
+                if cmd == "voicestyle":
+                    if not voice:
+                        ui.error("Voice unavailable. pip install edge-tts and ensure TTS is enabled.")
+                        continue
+                    from .voice.styles import current_voice_style, list_voice_styles
+
+                    if not rest or rest == "list":
+                        active = current_voice_style(voice.settings)
+                        ui.info(f"Current: {active.label} ({active.id})")
+                        for i, style in enumerate(list_voice_styles(), 1):
+                            mark = " *" if style.id == active.id else ""
+                            ui.print(
+                                f"  {i}. {style.id:8}  {style.label}  "
+                                f"— {style.voice}, {style.rate}, {style.pitch}{mark}"
+                            )
+                        ui.info("Switch: /voicestyle intimate | playful | bright")
+                        continue
+                    quiet = rest.endswith(" quiet")
+                    name = rest[:-6].strip() if quiet else rest
+                    try:
+                        label = voice.apply_voice_style(name, preview=not quiet)
+                    except ValueError as exc:
+                        ui.error(str(exc))
+                        continue
+                    ui.info(f"Voice style: {label}")
+                    continue
                 if cmd == "rtk":
                     if rest in ("off", "false", "0", "no"):
                         cfg.rtk_enabled = False
@@ -481,15 +515,30 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
                         ui.info(f"RTK wrapping enabled ({'rtk found' if rtk_available() else 'install rtk for effect'}).")
                     else:
                         ui.info(f"RTK is {'on' if cfg.rtk_enabled else 'off'} ({'installed' if rtk_available() else 'not in PATH'}).")
-                    mem_text, _ = ("", [])
-                    if not no_memory:
-                        mem_text, _ = build_memory_section(cfg.workspace)
-                    session.system = build_system_prompt(
-                        cfg.workspace,
-                        mem_text,
-                        codegraph_enabled=cfg.codegraph_enabled,
-                        rtk_enabled=cfg.rtk_enabled,
-                    )
+                    _rebuild_system(cfg, session, no_memory)
+                    continue
+                if cmd == "caveman":
+                    if rest in ("off", "false", "0", "no"):
+                        cfg.caveman_enabled = False
+                        ui.info("Caveman mode disabled — normal prose.")
+                    elif rest in ("on", "true", "1", "yes"):
+                        cfg.caveman_enabled = True
+                        ui.info("Caveman mode enabled — terse output.")
+                    else:
+                        ui.info(f"Caveman mode is {'on' if cfg.caveman_enabled else 'off'}.")
+                    _rebuild_system(cfg, session, no_memory)
+                    continue
+                if cmd == "verbose":
+                    if rest in ("off", "false", "0", "no"):
+                        cfg.verbose_tools = False
+                        ui.verbose = False
+                        ui.info("Verbose tool output disabled — simple status lines.")
+                    elif rest in ("on", "true", "1", "yes"):
+                        cfg.verbose_tools = True
+                        ui.verbose = True
+                        ui.info("Verbose tool output enabled.")
+                    else:
+                        ui.info(f"Verbose tool output is {'on' if cfg.verbose_tools else 'off'}.")
                     continue
                 if cmd == "codegraph":
                     if rest in ("off", "false", "0", "no"):
@@ -500,15 +549,7 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
                         ui.info(f"CodeGraph tools enabled ({codegraph_status(cfg.workspace)}).")
                     else:
                         ui.info(f"CodeGraph: {codegraph_status(cfg.workspace)} ({'tools on' if cfg.codegraph_enabled else 'tools off'}).")
-                    mem_text, _ = ("", [])
-                    if not no_memory:
-                        mem_text, _ = build_memory_section(cfg.workspace)
-                    session.system = build_system_prompt(
-                        cfg.workspace,
-                        mem_text,
-                        codegraph_enabled=cfg.codegraph_enabled,
-                        rtk_enabled=cfg.rtk_enabled,
-                    )
+                    _rebuild_system(cfg, session, no_memory)
                     continue
                 if cmd == "cost":
                     ui.print(format_cost_report(cfg.display_model(), session))
@@ -523,13 +564,7 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
                     path, created, msg = generate_sexyjarvis_md(cfg.workspace, overwrite=overwrite)
                     (ui.info if created else ui.error)(msg)
                     if created:
-                        mem_text, loaded = build_memory_section(cfg.workspace)
-                        session.system = build_system_prompt(
-                            cfg.workspace,
-                            mem_text,
-                            codegraph_enabled=cfg.codegraph_enabled,
-                            rtk_enabled=cfg.rtk_enabled,
-                        )
+                        loaded = _rebuild_system(cfg, session, no_memory)
                         ui.info(f"Reloaded instructions: {', '.join(p.name for p in loaded)}")
                     continue
                 if cmd == "undo":
@@ -784,8 +819,8 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
                 known = [
                     "help", "exit", "quit", "new", "clear", "model", "provider",
                     "models", "fallback", "memory", "tools", "retries", "confirm",
-                    "save", "load", "tokens", "voice", "speech", "hotkey", "rtk",
-                    "codegraph", "cost", "compact", "init", "undo", "plan", "diff",
+                    "save", "load", "tokens", "voice", "voicestyle", "speech", "hotkey", "rtk",
+                    "caveman", "verbose", "codegraph", "cost", "compact", "init", "undo", "plan", "diff",
                     "commit", "history", "resume", "commands", "retry", "export",
                     "bash", "context", "redo", "test", "pr",
                     "branch", "stash", "grep", "budget", "find", "secrets",
@@ -829,21 +864,30 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
                 continue
     finally:
         try:
-            archive_to_history(cfg.workspace, session)
-        except Exception:
+            try:
+                archive_to_history(cfg.workspace, session)
+            except Exception:
+                pass
+            try:
+                watcher.stop()
+            except Exception:
+                pass
+            try:
+                if mcp_registry is not None:
+                    mcp_registry.stop_all()
+            except Exception:
+                pass
+            try:
+                agent.llm.stop()
+            except (KeyboardInterrupt, Exception):
+                pass
+            if voice:
+                try:
+                    voice.stop()
+                except Exception:
+                    pass
+        except KeyboardInterrupt:
             pass
-        try:
-            watcher.stop()
-        except Exception:
-            pass
-        try:
-            if mcp_registry is not None:
-                mcp_registry.stop_all()
-        except Exception:
-            pass
-        agent.llm.stop()
-        if voice:
-            voice.stop()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -872,7 +916,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             cfg.model = args.model
 
-    ui = UI(color=not args.no_color, theme=cfg.theme)
+    ui = UI(color=not args.no_color, theme=cfg.theme, verbose=cfg.verbose_tools)
 
     voice_overrides = {
         "tts_enabled": False if args.no_voice else None,
@@ -892,7 +936,10 @@ def main(argv: list[str] | None = None) -> int:
         voice = None
 
     initial_task = " ".join(args.task).strip() or None
-    return run_repl(cfg, args.no_memory, ui, initial_task, voice=voice)
+    try:
+        return run_repl(cfg, args.no_memory, ui, initial_task, voice=voice)
+    except KeyboardInterrupt:
+        return 0
 
 
 if __name__ == "__main__":

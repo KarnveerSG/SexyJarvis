@@ -5,7 +5,7 @@ from __future__ import annotations
 import platform
 from pathlib import Path
 
-from .caveman import CAVEMAN_ULTRA, THINKING_PROMPT
+from .caveman import CAVEMAN_ULTRA, NORMAL_STYLE, NORMAL_THINKING_PROMPT, THINKING_PROMPT
 from .codegraph_tools import CODEGRAPH_GUIDANCE
 
 BASE_SYSTEM = """You are SexyJarvis, an autonomous terminal coding agent.
@@ -26,6 +26,7 @@ def build_system_prompt(
     *,
     codegraph_enabled: bool = True,
     rtk_enabled: bool = True,
+    caveman_enabled: bool = True,
 ) -> str:
     env = (
         f"\nEnvironment:\n"
@@ -33,7 +34,11 @@ def build_system_prompt(
         f"- OS: {platform.system()} {platform.release()}\n"
         f"- Python: {platform.python_version()}\n"
     )
-    parts = [BASE_SYSTEM, CAVEMAN_ULTRA, THINKING_PROMPT, env]
+    if caveman_enabled:
+        style_parts = [CAVEMAN_ULTRA, THINKING_PROMPT]
+    else:
+        style_parts = [NORMAL_STYLE, NORMAL_THINKING_PROMPT]
+    parts = [BASE_SYSTEM, *style_parts, env]
     if codegraph_enabled:
         parts.append(CODEGRAPH_GUIDANCE)
     if rtk_enabled:

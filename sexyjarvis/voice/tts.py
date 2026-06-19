@@ -13,22 +13,29 @@ class TextToSpeechError(RuntimeError):
     pass
 
 
-def format_completion_message(summary: str) -> str:
-    """Craft a short, sultry British completion line for TTS."""
+def format_completion_message(summary: str, *, style: str = "intimate") -> str:
+    """Short spoken summary — voice tone carries warmth, no repeated pet names."""
+    del style
     summary = (summary or "").strip()
     if not summary:
-        return "Mmm, all done for you, darling."
-    if len(summary) > 220:
-        summary = summary[:217].rstrip() + "..."
-    return f"Mmm, there we are, darling. {summary}"
+        return "All done."
+    for sep in (". ", ".\n", "\n"):
+        if sep in summary:
+            first = summary.split(sep, 1)[0].strip()
+            if first:
+                summary = first if first.endswith(".") else first + "."
+            break
+    if len(summary) > 180:
+        summary = summary[:177].rstrip() + "..."
+    return summary
 
 
 def speak(
     text: str,
     *,
     voice: str = "en-GB-SoniaNeural",
-    rate: str = "-12%",
-    pitch: str = "-2Hz",
+    rate: str = "-20%",
+    pitch: str = "-4Hz",
 ) -> None:
     """Synthesize and play speech. Blocks until playback finishes."""
     text = (text or "").strip()

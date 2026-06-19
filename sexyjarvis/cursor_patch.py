@@ -13,7 +13,46 @@ if TYPE_CHECKING:
     import subprocess
 
 
+def close_with_timeout(fn, timeout: float = 1.5) -> None:
+    """Run *fn* in a daemon thread; never block exit longer than *timeout*."""
+    import threading
+
+    done = threading.Event()
+
+    def _run() -> None:
+        try:
+            fn()
+        except (KeyboardInterrupt, Exception):
+            pass
+        finally:
+            done.set()
+
+    threading.Thread(target=_run, daemon=True).start()
+    try:
+        done.wait(timeout=timeout)
+    except KeyboardInterrupt:
+        pass
+
+
+def _patch_graceful_shutdown() -> None:
+    try:
+        import cursor_sdk._client as client_mod
+    except ImportError:
+        return
+    if getattr(client_mod, "_sexyjarvis_shutdown_patched", False):
+        return
+
+    original = client_mod.close_default_client
+
+    def _quiet_close() -> None:
+        close_with_timeout(original, timeout=1.5)
+
+    client_mod.close_default_client = _quiet_close  # type: ignore[method-assign]
+    client_mod._sexyjarvis_shutdown_patched = True
+
+
 def apply() -> None:
+    _patch_graceful_shutdown()
     if sys.platform != "win32":
         return
     try:

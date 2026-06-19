@@ -25,9 +25,12 @@ MOD_WIN = 0x0008
 VK_SPACE = 0x20
 
 DEFAULT_TTS_VOICE = "en-GB-SoniaNeural"  # British female neural voice
+DEFAULT_TTS_STYLE = "intimate"
 DEFAULT_HOTKEY_MODIFIERS = MOD_CTRL | MOD_ALT
 DEFAULT_HOTKEY_VKEY = VK_SPACE
 DEFAULT_HOTKEY_NAME = "Space"
+DEFAULT_TTS_RATE = "-20%"
+DEFAULT_TTS_PITCH = "-4Hz"
 
 
 @dataclass
@@ -68,9 +71,10 @@ class VoiceSettings:
 
     tts_enabled: bool = True
     stt_enabled: bool = True
+    tts_style: str = DEFAULT_TTS_STYLE
     tts_voice: str = DEFAULT_TTS_VOICE
-    tts_rate: str = "-12%"  # slightly slower, more deliberate delivery
-    tts_pitch: str = "-2Hz"
+    tts_rate: str = DEFAULT_TTS_RATE
+    tts_pitch: str = DEFAULT_TTS_PITCH
     stt_engine: str = "cloud"  # "cloud" | "offline"
     stt_api_key: str | None = None
     hotkey: HotkeySettings = field(default_factory=HotkeySettings)
@@ -207,12 +211,23 @@ def load_voice_settings(
     except Exception:
         mic = -1
 
+    style_key = str(pick(["SEXYJARVIS_TTS_STYLE"], "voice_style", DEFAULT_TTS_STYLE, None)).strip().lower()
+    from .styles import resolve_voice_style
+
+    style_preset = resolve_voice_style(style_key) or resolve_voice_style(DEFAULT_TTS_STYLE)
+    assert style_preset is not None
+
+    voice_override = pick(["SEXYJARVIS_TTS_VOICE"], "tts_voice", None, None)
+    rate_override = pick(["SEXYJARVIS_TTS_RATE"], "tts_rate", None, None)
+    pitch_override = pick(["SEXYJARVIS_TTS_PITCH"], "tts_pitch", None, None)
+
     settings = VoiceSettings(
         tts_enabled=_as_bool(pick(["SEXYJARVIS_TTS"], "tts_enabled", True, None), True),
         stt_enabled=_as_bool(pick(["SEXYJARVIS_STT"], "stt_enabled", True, None), True),
-        tts_voice=str(pick(["SEXYJARVIS_TTS_VOICE"], "tts_voice", DEFAULT_TTS_VOICE, None)),
-        tts_rate=str(pick(["SEXYJARVIS_TTS_RATE"], "tts_rate", "-12%", None)),
-        tts_pitch=str(pick(["SEXYJARVIS_TTS_PITCH"], "tts_pitch", "-2Hz", None)),
+        tts_style=style_preset.id,
+        tts_voice=str(voice_override or style_preset.voice),
+        tts_rate=str(rate_override or style_preset.rate),
+        tts_pitch=str(pitch_override or style_preset.pitch),
         stt_engine=stt_engine,
         stt_api_key=stt_key,
         hotkey=HotkeySettings(modifiers=hk_mods, virtual_key=hk_vkey, key_name=hk_name),

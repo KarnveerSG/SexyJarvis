@@ -64,6 +64,8 @@ class Config:
     stream: bool = True  # stream assistant text deltas when supported
     sandbox: str = ""  # "" = none, "docker:<image>" = wrap execute_bash in docker run
     thinking_budget: int = 2048  # extended thinking tokens; 0 = off
+    caveman_enabled: bool = True  # terse caveman output protocol in system prompt
+    verbose_tools: bool = False  # show full tool args/results; off = simple status lines
 
     @property
     def has_key(self) -> bool:
@@ -236,6 +238,8 @@ def load_config(workspace: Path | None = None, overrides: dict | None = None) ->
         max_iterations=as_int(pick(["SEXYJARVIS_MAX_ITERATIONS"], "max_iterations", DEFAULT_MAX_ITERATIONS), DEFAULT_MAX_ITERATIONS),
         token_budget=as_int(pick(["SEXYJARVIS_TOKEN_BUDGET"], "token_budget", 0), 0),
         thinking_budget=as_int(pick(["SEXYJARVIS_THINKING_BUDGET"], "thinking_budget", 2048), 2048),
+        caveman_enabled=as_bool(pick(["SEXYJARVIS_CAVEMAN"], "caveman_enabled", True), True),
+        verbose_tools=as_bool(pick(["SEXYJARVIS_VERBOSE_TOOLS"], "verbose_tools", False), False),
         workspace=ws,
         base_url=str(base_url) if base_url else None,
     )
@@ -253,6 +257,12 @@ def load_config(workspace: Path | None = None, overrides: dict | None = None) ->
         cfg.rtk_enabled = bool(overrides["rtk_enabled"])
     if "codegraph_enabled" in overrides and overrides["codegraph_enabled"] is not None:
         cfg.codegraph_enabled = bool(overrides["codegraph_enabled"])
+    if "caveman_enabled" in overrides and overrides["caveman_enabled"] is not None:
+        cfg.caveman_enabled = bool(overrides["caveman_enabled"])
+    if "verbose_tools" in overrides and overrides["verbose_tools"] is not None:
+        cfg.verbose_tools = bool(overrides["verbose_tools"])
+    if "stream" in overrides and overrides["stream"] is not None:
+        cfg.stream = bool(overrides["stream"])
 
     # Read theme block from the merged TOML (no overrides for nested theme).
     theme_block = toml_cfg.get("theme") if isinstance(toml_cfg, dict) else None
