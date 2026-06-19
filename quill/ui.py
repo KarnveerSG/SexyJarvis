@@ -114,12 +114,12 @@ class UI:
 
     def banner(self, model: str, workspace: str, memory_files: list[str], provider: str = "", fallback: bool = True):
         art = r"""
-   ____                 _                  _
-  / ___|  _____  ___   _| | __ _ _ ____   _(_)___
-  \___ \ / _ \ \/ / | | |/ _` | '__\ \ / / / __|
-   ___) |  __/>  <| |_| | | (_| | |   \ V /| \__ \
-  |____/ \___/_/\_\\__, |_|\__,_|_|    \_/ |_|___/
-                   |___/   OpenHands-style CLI agent
+  ____        _ _ _     
+ |  _ \ _   _| | | | __
+ | |_) | | | | | | |/ /
+ |  __/| |_| | | |   < 
+ |_|    \__,_|_|_|_|\_\
+          CODE BEAUTIFUL
 """.rstrip("\n")
         mem = ", ".join(memory_files) if memory_files else "none"
         fb = "Cursor → Claude → local" if fallback else "off"

@@ -14,8 +14,8 @@ let termCounter = 0;
 
 function quillCliPath() {
   const candidates = [
+    path.join(process.env.LOCALAPPDATA || "", "Programs", "Quill", "Quill.exe"),
     path.join(process.env.LOCALAPPDATA || "", "Programs", "Quill", "quill.exe"),
-    path.join(process.env.LOCALAPPDATA || "", "Programs", "quill", "quill.exe"),
     path.join(__dirname, "..", "dist", "quill.exe"),
   ];
   for (const p of candidates) {

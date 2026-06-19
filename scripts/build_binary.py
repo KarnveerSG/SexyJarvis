@@ -1,6 +1,6 @@
 """Build a standalone Quill binary.
 
-Windows: PyInstaller -> dist/quill.exe
+Windows: PyInstaller -> dist/Quill.exe
 Unix:    shiv         -> dist/Quill.pyz
 
 Usage:
@@ -154,7 +154,7 @@ def build_unix(out_path: Path, extras: list[str], python_shebang: str) -> int:
 
 
 def main() -> int:
-    default_out = "dist/quill.exe" if sys.platform == "win32" else "dist/quill.pyz"
+    default_out = "dist/Quill.exe" if sys.platform == "win32" else "dist/quill.pyz"
     parser = argparse.ArgumentParser(description="Build Quill as a standalone binary")
     parser.add_argument("--out", default=default_out)
     parser.add_argument("--python", default="/usr/bin/env python3", help="Shebang for shiv (Unix only)")
@@ -186,7 +186,7 @@ def main() -> int:
     if args.install:
         dest = install_binary(out_path)
         print(f"Installed: {dest}")
-        print("Restart your terminal, then run: quill")
+        print("Restart your terminal, then run: Quill")
     else:
         install_dir = _install_dir()
         print(f"To call from anywhere, run with --install or copy to: {install_dir}")

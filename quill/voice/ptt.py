@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 from .capture import AudioRecorder, VoiceCaptureError
-from .settings import VoiceSettings
+from .settings import HotkeySettings, VoiceSettings
 from .stt import SpeechToTextError, transcribe_wav
 
 
@@ -32,6 +32,7 @@ class PushToTalkInput:
         self._watch_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._keyboard = None
+        self._hotkey_failed = False
 
     def available(self) -> bool:
         try:
@@ -48,16 +49,39 @@ class PushToTalkInput:
         if not self.available():
             self._on_error(
                 "Speech input unavailable. Install voice extras: "
-                "pip install Quill[voice]"
+                "pip install quill[voice]"
             )
             return
         import keyboard
 
         self._keyboard = keyboard
+        if not self._ensure_hotkey():
+            return
         self._stop_event.clear()
+        self._hotkey_failed = False
         self._watch_thread = threading.Thread(target=self._watch_loop, daemon=True)
         self._watch_thread.start()
         self._armed = True
+
+    def _ensure_hotkey(self) -> bool:
+        key = self.settings.hotkey.key_name.lower()
+        if any(x in key for x in ("mouse", "xbutton", "mbutton", "wheel")):
+            self.settings.hotkey = HotkeySettings()
+            self._on_error(
+                "VoiceType mouse hotkey not supported. "
+                f"Using {self.settings.hotkey.display()} instead."
+            )
+            return True
+        try:
+            assert self._keyboard is not None
+            self._keyboard.key_to_scan_codes(key)
+            return True
+        except (ValueError, KeyError, TypeError):
+            self.settings.hotkey = HotkeySettings()
+            self._on_error(
+                f"Hotkey {key!r} not supported. Using {self.settings.hotkey.display()} instead."
+            )
+            return True
 
     def disarm(self) -> None:
         self._armed = False
@@ -83,7 +107,11 @@ class PushToTalkInput:
                 elif self._recording:
                     self._stop_recording(cancel=False)
             except Exception as exc:  # noqa: BLE001
-                self._on_error(f"Speech input error: {exc}")
+                if not self._hotkey_failed:
+                    self._hotkey_failed = True
+                    self._on_error(f"Speech input disabled: {exc}")
+                    self.disarm()
+                return
             time.sleep(0.04)
 
     def _is_hotkey_down(self) -> bool:

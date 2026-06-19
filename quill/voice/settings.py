@@ -143,6 +143,24 @@ def _as_bool(val, default: bool) -> bool:
     return str(val).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _hotkey_supported(key_name: str) -> bool:
+    low = (key_name or "").lower()
+    if any(x in low for x in ("mouse", "xbutton", "mbutton", "wheel")):
+        return False
+    try:
+        import keyboard
+        keyboard.key_to_scan_codes(key_name.lower())
+        return True
+    except (ValueError, KeyError, TypeError):
+        return False
+
+
+def _normalize_hotkey(hk_mods: int, hk_vkey: int, hk_name: str) -> HotkeySettings:
+    if _hotkey_supported(hk_name):
+        return HotkeySettings(modifiers=hk_mods, virtual_key=hk_vkey, key_name=hk_name)
+    return HotkeySettings()
+
+
 def load_voice_settings(
     workspace: Path | None = None,
     overrides: dict | None = None,
@@ -190,6 +208,7 @@ def load_voice_settings(
     except Exception:
         hk_vkey = DEFAULT_HOTKEY_VKEY
     hk_name = str(hotkey_pick("key_name", DEFAULT_HOTKEY_NAME, "KeyName"))
+    hotkey = _normalize_hotkey(hk_mods, hk_vkey, hk_name)
 
     engine_raw = str(pick(["QUILL_STT_ENGINE"], "stt_engine", "cloud", "Engine")).lower()
     if engine_raw == "cloud":
@@ -230,7 +249,7 @@ def load_voice_settings(
         tts_pitch=str(pitch_override or style_preset.pitch),
         stt_engine=stt_engine,
         stt_api_key=stt_key,
-        hotkey=HotkeySettings(modifiers=hk_mods, virtual_key=hk_vkey, key_name=hk_name),
+        hotkey=hotkey,
         microphone_device=mic,
         play_beep=_as_bool(pick(["QUILL_SPEECH_BEEP"], "play_beep", True, "PlayBeep"), True),
         voicetype_settings_path=vt_path if vt else None,
