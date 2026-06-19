@@ -77,7 +77,7 @@ const SETTINGS_SECTIONS = [
   { id: "appearance", label: "Appearance", icon: "◐" },
   { id: "voice", label: "Voice", icon: "♪" },
   { id: "integrations", label: "Integrations", icon: "⚡" },
-  { id: "mcp", label: "MCP", icon: "⬡", comingSoon: true },
+  { id: "mcp", label: "MCP", icon: "⬡" },
   { id: "skills", label: "MCP Skills", icon: "✦", comingSoon: true },
   { id: "remote", label: "Remote Integration", icon: "↗", comingSoon: true },
   { id: "terminal", label: "Terminal", icon: "▭" },

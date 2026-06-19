@@ -83,6 +83,7 @@ Slash commands:
   /stash [pop|list] git stash convenience wrapper
   /grep <pattern>  Run grep directly without involving the agent
   /budget [n]      Soft token-budget warning threshold (0 = off)
+  /mcp reload      Restart MCP servers from .quill/mcp.json
 Anything else is sent to the agent as a task.
 
 @-mentions: write @path/to/file.ext in your message to auto-attach a file.
@@ -118,6 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--allow-secrets", action="store_true", help="Disable the secret-scan write guard.")
     p.add_argument("--no-stream", action="store_true", help="Disable streaming assistant text.")
     p.add_argument("--desktop", action="store_true", help="Open the Quill desktop IDE.")
+    p.add_argument("--resume", action="store_true", help="Resume the last autosaved session (desktop).")
     p.add_argument("-v", "--version", action="version", version=f"Quill {__version__}")
     return p
 
@@ -221,7 +223,7 @@ def _ensure_global_config_hint(ui: UI) -> None:
         pass
 
 
-def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None) -> int:
+def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None, resume: bool = False) -> int:
     err = _validate_provider_keys(cfg)
     if err:
         _ensure_global_config_hint(ui)
@@ -234,6 +236,12 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
     on_complete = voice.announce_task_complete if voice else None
 
     agent = Agent(cfg, session, ui, on_task_complete=on_complete)
+
+    from .desktop_session import flush_desktop_session, install_desktop_shutdown_handlers, try_resume_session
+
+    install_desktop_shutdown_handlers(session, cfg.workspace)
+    if resume and try_resume_session(session, cfg.workspace):
+        ui.info(f"Resumed {len(session.messages)} messages from prior session.")
 
     if cfg.provider == "auto" and not cfg.has_cursor_key and cfg.active_provider == "anthropic":
         ui.info(
@@ -260,6 +268,33 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
     # File watcher: reload memory + ignore + hooks when relevant files change.
     from .watcher import FileWatcher
 
+    def _reload_mcp() -> None:
+        nonlocal mcp_registry
+        reload_flag = cfg.workspace / ".quill" / "mcp.reload"
+        try:
+            if reload_flag.is_file():
+                reload_flag.unlink()
+        except OSError:
+            pass
+        if mcp_registry is not None:
+            mcp_registry.stop_all()
+            mcp_registry = None
+            agent.runner.mcp = None
+        cfg_data = load_mcp_config(cfg.workspace)
+        if cfg_data.get("servers"):
+            with ui.status("Reloading MCP servers..."):
+                mcp_registry = MCPRegistry(cfg.workspace)
+                started = mcp_registry.start_all()
+            if started:
+                agent.runner.mcp = mcp_registry
+                tool_count = sum(len(s.tools or []) for s in mcp_registry.servers.values())
+                ui.info(f"MCP reloaded: {', '.join(started)} ({tool_count} tool(s)).")
+            else:
+                ui.error("MCP reload: no servers started.")
+                mcp_registry = None
+        else:
+            ui.info("MCP config cleared — no servers running.")
+
     def _on_files_changed(paths: set[str]) -> None:
         memory_changed = any(
             p.endswith(("QUILL.md", ".quill.md", "CLAUDE.md", "AGENTS.md", ".cursorrules"))
@@ -277,6 +312,8 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
             ui.info("📝 Reloaded external tools.")
         if any(p.startswith(".quill/commands/") for p in paths):
             ui.info("📝 Custom commands changed.")
+        if any("mcp.json" in p or "mcp.reload" in p for p in paths):
+            _reload_mcp()
 
     watcher = FileWatcher(cfg.workspace, _on_files_changed)
     watcher.start()
@@ -328,6 +365,7 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
                 cmd, _, rest = user_input[1:].partition(" ")
                 rest = rest.strip()
                 if cmd in ("exit", "quit"):
+                    flush_desktop_session(session, cfg.workspace)
                     ui.print("Bye.")
                     return 0
                 if cmd == "help":
@@ -402,6 +440,12 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
                         ui.info("Loaded: " + ", ".join(str(p) for p in loaded))
                     else:
                         ui.info("No instruction files found.")
+                    continue
+                if cmd == "mcp":
+                    if rest in ("reload", "refresh"):
+                        _reload_mcp()
+                    else:
+                        ui.info("Usage: /mcp reload")
                     continue
                 if cmd == "tools":
                     schemas = get_tool_schemas(cfg, mcp_registry=mcp_registry)
@@ -873,6 +917,7 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None)
                 continue
     finally:
         try:
+            flush_desktop_session(session, cfg.workspace)
             try:
                 archive_to_history(cfg.workspace, session)
             except Exception:
@@ -958,7 +1003,7 @@ def main(argv: list[str] | None = None) -> int:
 
     initial_task = " ".join(args.task).strip() or None
     try:
-        return run_repl(cfg, args.no_memory, ui, initial_task, voice=voice)
+        return run_repl(cfg, args.no_memory, ui, initial_task, voice=voice, resume=args.resume)
     except KeyboardInterrupt:
         return 0
 

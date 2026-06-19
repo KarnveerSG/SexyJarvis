@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net data:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net data:; worker-src 'self' blob: https://cdn.jsdelivr.net;" />
   <title>Quill</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css" />
   <link rel="stylesheet" href="styles.css" />
@@ -62,12 +62,47 @@
       <div class="sidebar-title">WORKSPACES</div>
       <ul id="workspace-list"></ul>
       <button type="button" class="add-ws" id="add-workspace">+ Workspace</button>
+      <details class="file-tree-panel" id="file-tree-panel" open>
+        <summary class="sidebar-title">FILES</summary>
+        <ul id="file-tree" class="file-tree"></ul>
+      </details>
+      <details class="scm-panel" id="scm-panel" open>
+        <summary class="sidebar-title">SOURCE CONTROL</summary>
+        <div class="scm-toolbar">
+          <button type="button" class="scm-btn" id="scm-stage-all" title="Stage all">Stage all</button>
+          <button type="button" class="scm-btn scm-icon-btn" id="scm-refresh" title="Refresh">↻</button>
+        </div>
+        <ul id="scm-files" class="scm-files"></ul>
+        <div class="scm-commit">
+          <input type="text" id="scm-message" placeholder="Commit message…" autocomplete="off" />
+          <button type="button" class="scm-btn scm-commit-btn" id="scm-commit">Commit</button>
+        </div>
+        <p class="scm-status-msg" id="scm-status"></p>
+      </details>
     </aside>
     <main class="workspace">
       <div id="pane-grid" class="pane-grid grid-1x1"></div>
+      <div id="editor-drawer" class="editor-drawer hidden">
+        <div class="editor-resize-handle" id="editor-resize-handle" title="Drag to resize"></div>
+        <header class="editor-header">
+          <span id="editor-title">Editor</span>
+          <span id="editor-dirty" class="editor-dirty hidden">●</span>
+          <div class="editor-tabs">
+            <button type="button" class="editor-tab active" data-tab="file">File</button>
+            <button type="button" class="editor-tab" data-tab="diff">Diff</button>
+          </div>
+          <button type="button" class="editor-save btn-primary" id="editor-save" title="Save (Ctrl+S)">Save</button>
+          <button type="button" class="editor-close" id="editor-close" title="Close">×</button>
+        </header>
+        <div id="monaco-editor" class="editor-monaco"></div>
+        <div id="monaco-diff" class="editor-monaco hidden"></div>
+      </div>
       <footer class="statusbar">
         <span id="status-provider">Quill agent</span>
+        <select id="status-branch" class="status-branch" title="Switch branch"></select>
+        <span id="status-git-changes"></span>
         <span id="status-hints">Ctrl+P commands · Ctrl+Shift+I theme</span>
+        <span id="status-file"></span>
         <span id="status-path"></span>
       </footer>
     </main>
@@ -91,6 +126,7 @@
     <ul id="palette-list"></ul>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
   <script src="app.js"></script>

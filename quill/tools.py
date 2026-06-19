@@ -16,6 +16,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -468,6 +469,15 @@ class ToolRunner:
             p = self.workspace / p
         return p
 
+    def _emit_quill_edit(self, path: Path) -> None:
+        if not os.environ.get("QUILL_DESKTOP"):
+            return
+        try:
+            target = path.relative_to(self.workspace).as_posix()
+        except ValueError:
+            target = str(path)
+        print(f"[QUILL_EDIT:{target}]", file=sys.stderr, flush=True)
+
     def _unified_diff(self, old: str, new: str, path: Path) -> str | None:
         if old == new:
             return None
@@ -635,6 +645,7 @@ class ToolRunner:
         self._push_undo(path, old if existed else None)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+        self._emit_quill_edit(path)
         verb = "Overwrote" if existed else "Created"
         diff_note = ""
         if existed and old != content:
@@ -660,6 +671,7 @@ class ToolRunner:
         new_text = text.replace(old_string, new_string, 1)
         self._push_undo(path, text)
         path.write_text(new_text, encoding="utf-8")
+        self._emit_quill_edit(path)
         diff = self._unified_diff(text, new_text, path)
         return ToolResult(f"Edited {path}.", diff=diff)
 
@@ -705,6 +717,7 @@ class ToolRunner:
                 )
         self._push_undo(path, original)
         path.write_text(text, encoding="utf-8")
+        self._emit_quill_edit(path)
         diff = self._unified_diff(original, text, path)
         return ToolResult(f"Applied {applied} edits to {path}.", diff=diff)
 

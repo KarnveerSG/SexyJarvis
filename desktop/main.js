@@ -1,10 +1,17 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { spawn } = require("child_process");
+const { spawn, execFile } = require("child_process");
+const { promisify } = require("util");
+const execFileAsync = promisify(execFile);
 const { INTEGRATIONS, SETTINGS_SECTIONS, CORE_ENV_KEYS } = require("./integrations");
 const { THEMES } = require("./themes");
+
+let nodePty = null;
+try {
+  nodePty = require("node-pty");
+} catch (_) {}
 
 const PERSONAS = ["Iris", "Thea", "Nova", "Sage", "Luna", "Wren"];
 const RAINBOW = ["#FF6B6B", "#FF9F43", "#FECA57", "#1DD1A1", "#54A0FF", "#5F27CD", "#A29BFE"];
@@ -12,6 +19,132 @@ const RAINBOW = ["#FF6B6B", "#FF9F43", "#FECA57", "#1DD1A1", "#54A0FF", "#5F27CD
 let mainWindow = null;
 const terminals = new Map();
 let termCounter = 0;
+let shuttingDown = false;
+let workspaceWatcher = null;
+let watchDebounce = null;
+const WATCH_SKIP_DIRS = new Set([".git", "node_modules", ".codegraph", "__pycache__", "dist", "build"]);
+
+function emitWorkspaceFileChanged(changedPath) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("workspace-file-changed", { path: changedPath });
+  }
+}
+
+function setupWorkspaceWatcher(cwd) {
+  if (workspaceWatcher) {
+    workspaceWatcher.close();
+    workspaceWatcher = null;
+  }
+  if (!cwd) return;
+  const root = path.resolve(cwd);
+  if (!fs.existsSync(root)) return;
+  try {
+    workspaceWatcher = fs.watch(root, { recursive: true }, (_eventType, filename) => {
+      if (!filename) return;
+      const rel = String(filename);
+      if (rel.split(/[/\\]/).some((part) => WATCH_SKIP_DIRS.has(part))) return;
+      const changedPath = path.join(root, rel);
+      clearTimeout(watchDebounce);
+      watchDebounce = setTimeout(() => emitWorkspaceFileChanged(changedPath), 250);
+    });
+    workspaceWatcher.on("error", () => {
+      workspaceWatcher?.close();
+      workspaceWatcher = null;
+    });
+  } catch (_) {}
+}
+
+function syncWorkspaceWatcher(state) {
+  const ws = state?.workspaces?.find((w) => w.id === state.activeWorkspace) || state?.workspaces?.[0];
+  setupWorkspaceWatcher(ws?.cwd);
+}
+
+function forceKillProc(proc) {
+  if (!proc || proc.killed) return;
+  try {
+    proc.kill();
+  } catch (_) {}
+  if (process.platform === "win32" && proc.pid) {
+    try {
+      spawn("taskkill", ["/PID", String(proc.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+    } catch (_) {}
+  }
+}
+
+function gracefulKillTerm(id, t) {
+  return new Promise((resolve) => {
+    if (t?.pty) {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        terminals.delete(id);
+        resolve();
+      };
+      try {
+        t.pty.onExit(() => finish());
+        t.pty.write("/exit\r\n");
+      } catch (_) {}
+      setTimeout(() => {
+        try {
+          t.pty.kill();
+        } catch (_) {}
+        finish();
+      }, 3000);
+      return;
+    }
+    const proc = t?.proc;
+    if (!proc || proc.killed) {
+      terminals.delete(id);
+      resolve();
+      return;
+    }
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      terminals.delete(id);
+      resolve();
+    };
+    proc.once("exit", finish);
+    try {
+      if (proc.stdin?.writable) proc.stdin.write("/exit\r\n");
+    } catch (_) {}
+    setTimeout(() => {
+      forceKillProc(proc);
+      finish();
+    }, 3000);
+  });
+}
+
+async function shutdownAllTerminals() {
+  await Promise.all([...terminals.entries()].map(([id, t]) => gracefulKillTerm(id, t)));
+  terminals.clear();
+}
+
+async function quitApp() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  if (workspaceWatcher) {
+    workspaceWatcher.close();
+    workspaceWatcher = null;
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      await mainWindow.webContents.executeJavaScript(
+        "window.__quillShutdown ? window.__quillShutdown() : Promise.resolve()",
+        true,
+      );
+    } catch (_) {}
+  }
+  await shutdownAllTerminals();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.destroy();
+    mainWindow = null;
+  }
+  app.quit();
+  setTimeout(() => app.exit(0), 500);
+}
 
 function quillCliPath() {
   const candidates = [
@@ -66,6 +199,78 @@ function integrationStatus(env, integration) {
     ? "connected" : "disconnected";
 }
 
+function resolveWorkspaceCwd(cwd) {
+  if (cwd) return cwd;
+  const st = loadState();
+  const ws = st.workspaces?.find((w) => w.id === st.activeWorkspace) || st.workspaces?.[0];
+  return ws?.cwd || os.homedir();
+}
+
+function mcpConfigPath(cwd) {
+  return path.join(resolveWorkspaceCwd(cwd), ".quill", "mcp.json");
+}
+
+function loadMcpConfigFile(cwd) {
+  const filePath = mcpConfigPath(cwd);
+  if (!fs.existsSync(filePath)) return { path: filePath, config: { servers: {} } };
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const servers = data?.servers && typeof data.servers === "object" ? data.servers : {};
+    return { path: filePath, config: { servers } };
+  } catch {
+    return { path: filePath, config: { servers: {} } };
+  }
+}
+
+function saveMcpConfigFile(cwd, config) {
+  const filePath = mcpConfigPath(cwd);
+  const servers = config?.servers && typeof config.servers === "object" ? config.servers : {};
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify({ servers }, null, 2) + "\n", "utf8");
+  return { ok: true, path: filePath };
+}
+
+function notifyMcpReload(cwd) {
+  const root = resolveWorkspaceCwd(cwd);
+  const flagPath = path.join(root, ".quill", "mcp.reload");
+  try {
+    fs.mkdirSync(path.dirname(flagPath), { recursive: true });
+    fs.writeFileSync(flagPath, String(Date.now()) + "\n", "utf8");
+  } catch (_) {}
+  for (const [, t] of terminals) {
+    if (t.cwd !== root) continue;
+    try {
+      if (t.pty) t.pty.write("/mcp reload\r");
+      else if (t.proc?.stdin?.writable) t.proc.stdin.write("/mcp reload\r");
+    } catch (_) {}
+  }
+  return { ok: true };
+}
+
+function workspacesProfileDir() {
+  return path.join(os.homedir(), ".quill", "workspaces");
+}
+
+function saveWorkspaceProfile(ws) {
+  if (!ws?.named || !ws?.id) return { ok: false };
+  const dir = workspacesProfileDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${ws.id}.json`);
+  fs.writeFileSync(file, JSON.stringify(ws, null, 2) + "\n", "utf8");
+  return { ok: true, path: file };
+}
+
+function importWorkspaceFile(filePath) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const ws = raw.workspaces?.[0] || raw;
+    if (!ws.cwd) return { ok: false, error: "Workspace file missing cwd." };
+    return { ok: true, workspace: ws };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
 const STATE_VERSION = 2;
 
 function defaultState() {
@@ -82,6 +287,7 @@ function defaultState() {
       panes: 1,
       layout: "grid-1x1",
       paneIds: [paneId],
+      named: false,
     }],
     activeWorkspace: "ws-main",
     theme: "dark",
@@ -123,6 +329,7 @@ function createWindow() {
     backgroundColor: "#0d0d12",
     title: "Quill",
     show: false,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -134,10 +341,6 @@ function createWindow() {
   mainWindow.once("ready-to-show", () => mainWindow.show());
   mainWindow.on("closed", () => {
     mainWindow = null;
-    for (const [id, t] of terminals) {
-      try { t.proc.kill(); } catch (_) {}
-      terminals.delete(id);
-    }
   });
 
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
@@ -148,42 +351,68 @@ function spawnTerm(id, opts) {
   const persona = opts.persona || "Iris";
   const quill = quillCliPath();
   const args = ["-w", cwd, "--no-speech"];
-
-  const proc = spawn(quill, args, {
-    cwd,
-    env: {
-      ...process.env,
-      TERM: "xterm-256color",
-      COLORTERM: "truecolor",
-      FORCE_COLOR: "1",
-      QUILL_PERSONA: persona,
-      QUILL_DESKTOP: "1",
-      PYTHONUNBUFFERED: "1",
-      PYTHONIOENCODING: "utf-8",
-    },
-    shell: false,
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-  });
-
-  terminals.set(id, { proc, persona, cwd });
+  if (opts.named) args.push("--resume");
+  const envObj = {
+    ...process.env,
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    FORCE_COLOR: "1",
+    QUILL_PERSONA: persona,
+    QUILL_DESKTOP: "1",
+    QUILL_NAMED_WORKSPACE: opts.named ? "1" : "0",
+    QUILL_WORKSPACE_ID: opts.workspaceId || "",
+    PYTHONUNBUFFERED: "1",
+    PYTHONIOENCODING: "utf-8",
+  };
+  const cols = opts.cols || 120;
+  const rows = opts.rows || 30;
 
   const emit = (data) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("pty-data", { id, data: data.toString() });
     }
   };
-  proc.stdout.on("data", emit);
-  proc.stderr.on("data", emit);
-  proc.on("exit", (code) => {
+  const onExit = (code) => {
     terminals.delete(id);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("pty-exit", { id, exitCode: code });
+      mainWindow.webContents.send("pty-exit", { id, exitCode: code ?? 0 });
     }
+  };
+
+  if (nodePty) {
+    try {
+      const pty = nodePty.spawn(quill, args, {
+        name: "xterm-256color",
+        cols,
+        rows,
+        cwd,
+        env: envObj,
+        useConpty: process.platform === "win32",
+      });
+      terminals.set(id, { pty, proc: null, persona, cwd, cols, rows, named: Boolean(opts.named), workspaceId: opts.workspaceId || "" });
+      pty.onData(emit);
+      pty.onExit(({ exitCode }) => onExit(exitCode));
+      return { id, persona, mode: "agent", pty: true };
+    } catch (err) {
+      emit(`\r\n\x1b[33mPTY fallback: ${err.message}\x1b[0m\r\n`);
+    }
+  }
+
+  const proc = spawn(quill, args, {
+    cwd,
+    env: envObj,
+    shell: false,
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
   });
+
+  terminals.set(id, { proc, pty: null, persona, cwd, cols, rows, named: Boolean(opts.named), workspaceId: opts.workspaceId || "" });
+  proc.stdout.on("data", emit);
+  proc.stderr.on("data", emit);
+  proc.on("exit", (code) => onExit(code));
   proc.on("error", (err) => emit(`\r\n\x1b[31m${err.message}\x1b[0m\r\n`));
 
-  return { id, persona, mode: "agent" };
+  return { id, persona, mode: "agent", pty: false };
 }
 
 ipcMain.handle("get-bootstrap", () => {
@@ -202,6 +431,7 @@ ipcMain.handle("get-bootstrap", () => {
     quillPath: quillCliPath(),
     envPath: envPath(),
     version: app.getVersion(),
+    ptyAvailable: Boolean(nodePty),
     settingsSections: SETTINGS_SECTIONS,
     integrations,
     integrationsSummary: `${connected} of ${INTEGRATIONS.length} connected`,
@@ -209,7 +439,11 @@ ipcMain.handle("get-bootstrap", () => {
   };
 });
 
-ipcMain.handle("save-state", (_e, state) => { saveState(state); return true; });
+ipcMain.handle("save-state", (_e, state) => {
+  saveState(state);
+  syncWorkspaceWatcher(state);
+  return true;
+});
 ipcMain.handle("pick-folder", async () => {
   const r = await dialog.showOpenDialog(mainWindow, {
     properties: ["openDirectory"],
@@ -231,6 +465,15 @@ ipcMain.handle("get-env", () => {
   const env = parseEnvFile(envPath());
   return { path: envPath(), keys: Object.keys(env) };
 });
+ipcMain.handle("get-mcp-config", (_e, cwd) => loadMcpConfigFile(cwd));
+ipcMain.handle("save-mcp-config", (_e, { cwd, config }) => {
+  const result = saveMcpConfigFile(cwd, config);
+  if (result.ok) notifyMcpReload(cwd);
+  return result;
+});
+ipcMain.handle("reload-mcp-agents", (_e, cwd) => notifyMcpReload(cwd));
+ipcMain.handle("save-workspace-profile", (_e, ws) => saveWorkspaceProfile(ws));
+ipcMain.handle("import-workspace-file", (_e, filePath) => importWorkspaceFile(filePath));
 ipcMain.handle("save-env-keys", (_e, updates) => {
   const file = envPath();
   const env = parseEnvFile(file);
@@ -249,16 +492,281 @@ ipcMain.handle("save-env-keys", (_e, updates) => {
 ipcMain.handle("pty-create", (_e, opts) => spawnTerm(`term-${++termCounter}`, opts));
 ipcMain.handle("pty-write", (_e, { id, data }) => {
   const t = terminals.get(id);
-  if (t?.proc?.stdin?.writable) t.proc.stdin.write(data);
+  if (t?.pty) {
+    try {
+      t.pty.write(data);
+    } catch (_) {}
+  } else if (t?.proc?.stdin?.writable) t.proc.stdin.write(data);
 });
-ipcMain.handle("pty-resize", () => {});
-ipcMain.handle("pty-kill", (_e, { id }) => {
+ipcMain.handle("pty-resize", (_e, { id, cols, rows }) => {
   const t = terminals.get(id);
-  if (t) { try { t.proc.kill(); } catch (_) {} terminals.delete(id); }
+  if (!t) return;
+  t.cols = cols;
+  t.rows = rows;
+  if (t.pty) {
+    try {
+      t.pty.resize(cols, rows);
+    } catch (_) {}
+  }
+});
+ipcMain.handle("pty-kill", async (_e, { id }) => {
+  const t = terminals.get(id);
+  if (t) await gracefulKillTerm(id, t);
 });
 ipcMain.handle("open-external", (_e, url) => shell.openExternal(url));
-ipcMain.handle("app-quit", () => app.quit());
+ipcMain.handle("app-quit", async () => { await quitApp(); return true; });
 
-app.whenReady().then(createWindow);
+async function runGit(cwd, args) {
+  try {
+    const { stdout } = await execFileAsync("git", args, { cwd, windowsHide: true });
+    return stdout.trim();
+  } catch {
+    return "";
+  }
+}
+
+async function runGitEx(cwd, args) {
+  try {
+    const { stdout } = await execFileAsync("git", args, { cwd, windowsHide: true });
+    return { ok: true, stdout: stdout.trim() };
+  } catch (err) {
+    const error = (err.stderr || err.stdout || err.message || "git failed").toString().trim();
+    return { ok: false, error };
+  }
+}
+
+function parseGitStatusPorcelain(text, root) {
+  const lines = text ? text.split(/\r?\n/).filter(Boolean) : [];
+  return lines.map((line) => {
+    const indexStatus = line[0] || " ";
+    const workStatus = line[1] || " ";
+    let relPath = line.slice(3);
+    if (relPath.includes(" -> ")) relPath = relPath.split(" -> ").pop();
+    const status =
+      indexStatus === "?" && workStatus === "?" ? "?" :
+      indexStatus === "A" || workStatus === "A" ? "A" :
+      indexStatus === "D" || workStatus === "D" ? "D" :
+      indexStatus === "R" || workStatus === "R" ? "R" : "M";
+    const staged = indexStatus !== " " && indexStatus !== "?";
+    return {
+      path: relPath,
+      absPath: path.join(root, relPath),
+      status,
+      staged,
+      index: indexStatus,
+      worktree: workStatus,
+    };
+  });
+}
+
+async function gitStatusFilesForRoot(root) {
+  const out = await runGit(root, ["status", "--porcelain"]);
+  return parseGitStatusPorcelain(out, root);
+}
+
+ipcMain.handle("get-git-info", async (_e, cwd) => {
+  const root = resolveWorkspaceCwd(cwd);
+  const branch = await runGit(root, ["branch", "--show-current"]);
+  const status = await runGit(root, ["status", "--short"]);
+  const lines = status ? status.split(/\r?\n/).filter(Boolean) : [];
+  return { branch: branch || null, changes: lines.length, status };
+});
+
+ipcMain.handle("git-status-files", async (_e, cwd) => {
+  const root = resolveWorkspaceCwd(cwd);
+  const check = await runGitEx(root, ["rev-parse", "--is-inside-work-tree"]);
+  if (!check.ok) return { ok: false, error: check.error, files: [] };
+  const files = await gitStatusFilesForRoot(root);
+  return { ok: true, files };
+});
+
+ipcMain.handle("git-branches", async (_e, cwd) => {
+  const root = resolveWorkspaceCwd(cwd);
+  const check = await runGitEx(root, ["rev-parse", "--is-inside-work-tree"]);
+  if (!check.ok) return { ok: false, error: check.error, branches: [], current: null };
+  const out = await runGit(root, ["for-each-ref", "--format=%(refname:short)|%(HEAD)", "refs/heads/"]);
+  const branches = out
+    ? out.split(/\r?\n/).filter(Boolean).map((line) => {
+      const [name, head] = line.split("|");
+      return { name, current: head === "*" };
+    })
+    : [];
+  const current = branches.find((b) => b.current)?.name || (await runGit(root, ["branch", "--show-current"])) || null;
+  return { ok: true, branches, current };
+});
+
+ipcMain.handle("git-checkout", async (_e, { cwd, branch }) => {
+  const root = resolveWorkspaceCwd(cwd);
+  const name = (branch || "").trim();
+  if (!name) return { ok: false, error: "Branch name required." };
+  const res = await runGitEx(root, ["checkout", name]);
+  if (!res.ok) return { ok: false, error: res.error };
+  const files = await gitStatusFilesForRoot(root);
+  return { ok: true, branch: name, files };
+});
+
+ipcMain.handle("git-stage", async (_e, { cwd, files, all }) => {
+  const root = resolveWorkspaceCwd(cwd);
+  let res;
+  if (all) {
+    res = await runGitEx(root, ["add", "-A"]);
+  } else if (files?.length) {
+    res = await runGitEx(root, ["add", "--", ...files]);
+  } else {
+    return { ok: false, error: "No files specified." };
+  }
+  if (!res.ok) return { ok: false, error: res.error };
+  const changed = await gitStatusFilesForRoot(root);
+  return { ok: true, files: changed };
+});
+
+ipcMain.handle("git-commit", async (_e, { cwd, message }) => {
+  const root = resolveWorkspaceCwd(cwd);
+  const msg = (message || "").trim();
+  if (!msg) return { ok: false, error: "Commit message required." };
+  const res = await runGitEx(root, ["commit", "-m", msg]);
+  if (!res.ok) return { ok: false, error: res.error };
+  const files = await gitStatusFilesForRoot(root);
+  return { ok: true, output: res.stdout, files };
+});
+
+ipcMain.handle("list-directory", (_e, dirPath) => {
+  const target = dirPath || resolveWorkspaceCwd();
+  try {
+    if (!fs.existsSync(target) || !fs.statSync(target).isDirectory()) {
+      return { ok: false, path: target, entries: [] };
+    }
+    const entries = fs.readdirSync(target, { withFileTypes: true })
+      .filter((d) => !d.name.startsWith(".") && d.name !== "node_modules")
+      .map((d) => ({
+        name: d.name,
+        path: path.join(target, d.name),
+        isDirectory: d.isDirectory(),
+      }))
+      .sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      });
+    return { ok: true, path: target, entries };
+  } catch {
+    return { ok: false, path: target, entries: [] };
+  }
+});
+
+const MAX_READ_BYTES = 512 * 1024;
+
+ipcMain.handle("read-file", (_e, filePath) => {
+  try {
+    const target = path.resolve(filePath);
+    if (!fs.existsSync(target) || !fs.statSync(target).isFile()) {
+      return { ok: false, error: "File not found." };
+    }
+    const size = fs.statSync(target).size;
+    if (size > MAX_READ_BYTES) {
+      return { ok: false, error: `File too large (${size} bytes). Max ${MAX_READ_BYTES}.` };
+    }
+    const content = fs.readFileSync(target, "utf8");
+    return { ok: true, path: target, content };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+});
+
+function isPathInWorkspace(filePath, cwd) {
+  const root = path.resolve(resolveWorkspaceCwd(cwd));
+  const target = path.resolve(filePath);
+  const rel = path.relative(root, target);
+  return rel && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+ipcMain.handle("write-file", (_e, { filePath, content, cwd }) => {
+  try {
+    const target = path.resolve(filePath);
+    if (!isPathInWorkspace(target, cwd)) {
+      return { ok: false, error: "Path outside workspace." };
+    }
+    const text = String(content ?? "");
+    if (Buffer.byteLength(text, "utf8") > MAX_READ_BYTES) {
+      return { ok: false, error: "Content too large." };
+    }
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, text, "utf8");
+    return { ok: true, path: target };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+});
+
+ipcMain.handle("git-show-file", async (_e, { cwd, filePath, ref }) => {
+  const root = resolveWorkspaceCwd(cwd);
+  const rel = path.relative(root, path.resolve(filePath)).replace(/\\/g, "/");
+  if (!rel || rel.startsWith("..")) return { ok: false, error: "Invalid path." };
+  const r = await runGitEx(root, ["show", `${ref || "HEAD"}:${rel}`]);
+  if (!r.ok) return { ok: false, error: r.error || "Not in git." };
+  return { ok: true, content: r.stdout };
+});
+
+ipcMain.handle("check-for-updates", async () => {
+  const current = app.getVersion();
+  return { ok: true, current, updateAvailable: false, latest: current, url: null };
+});
+
+ipcMain.handle("git-diff", async (_e, { cwd, filePath }) => {
+  const root = resolveWorkspaceCwd(cwd);
+  const args = filePath ? ["diff", "--", filePath] : ["diff"];
+  const out = await runGit(root, args);
+  return { ok: true, diff: out || "(no changes)" };
+});
+
+ipcMain.handle("search-files", (_e, { cwd, query, limit }) => {
+  const root = resolveWorkspaceCwd(cwd);
+  const q = (query || "").toLowerCase();
+  const max = Math.min(Number(limit) || 40, 100);
+  const results = [];
+  const skip = new Set(["node_modules", ".git", ".codegraph", "dist", "build", "__pycache__"]);
+  function walk(dir, depth) {
+    if (results.length >= max || depth > 6) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const d of entries) {
+      if (results.length >= max) break;
+      if (d.name.startsWith(".") || skip.has(d.name)) continue;
+      const full = path.join(dir, d.name);
+      if (d.isDirectory()) walk(full, depth + 1);
+      else if (!q || d.name.toLowerCase().includes(q)) {
+        results.push({ name: d.name, path: full, rel: path.relative(root, full) });
+      }
+    }
+  }
+  walk(root, 0);
+  return { ok: true, files: results.slice(0, max) };
+});
+
+ipcMain.handle("test-mcp-server", async (_e, spec) => {
+  const command = (spec?.command || "").trim();
+  if (!command) return { ok: false, error: "Command required." };
+  try {
+    await execFileAsync(process.platform === "win32" ? "where" : "which", [command], { windowsHide: true });
+    return { ok: true, message: `Command "${command}" found on PATH.` };
+  } catch {
+    return { ok: false, error: `Command "${command}" not found on PATH.` };
+  }
+});
+
+app.on("before-quit", (e) => {
+  if (shuttingDown) return;
+  e.preventDefault();
+  quitApp();
+});
+
+app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
+  createWindow();
+  syncWorkspaceWatcher(loadState());
+});
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

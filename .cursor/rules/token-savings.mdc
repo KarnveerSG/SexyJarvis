@@ -1,0 +1,39 @@
+---
+description: Token savings — CodeGraph MCP + RTK (project); global hooks at ~/.cursor too
+alwaysApply: true
+---
+
+# Token savings (mandatory)
+
+Global hooks at `~/.cursor/hooks.json` also apply. This project has `.codegraph/` indexed.
+
+## CodeGraph — use MCP first
+
+Before Read/Grep/SemanticSearch exploration loops:
+
+1. Call `codegraph_explore` (user-codegraph MCP) for architecture, flows, "how does X work", pre-edit surveys.
+2. Use `codegraph_node` for one symbol/file with callers/callees.
+3. Use `codegraph_callers` before refactors.
+4. Use `codegraph_search` to locate symbols by name.
+
+Trust CodeGraph output — do not re-verify with grep unless staleness banner says file pending re-index.
+
+Skip CodeGraph only for configs, docs, or non-indexed paths.
+
+## RTK — compact shell output
+
+For git, tests, builds, npm, pip, and other noisy CLI commands, prefix with `rtk`:
+
+```powershell
+rtk git status
+rtk npm test
+rtk python -m pytest
+```
+
+Do not wrap: interactive commands, `rtk` itself, `codegraph`, or one-liners that must stay raw.
+
+Prefer RTK output over piping huge logs into context.
+
+## Caveman
+
+Keep responses terse when user invokes caveman mode. Technical accuracy unchanged.

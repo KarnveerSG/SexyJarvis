@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .caveman import CAVEMAN_ULTRA, NORMAL_STYLE, NORMAL_THINKING_PROMPT, THINKING_PROMPT
 from .codegraph_tools import CODEGRAPH_GUIDANCE
+from .personas import persona_section
 
 BASE_SYSTEM = """You are Quill, an autonomous terminal coding agent.
 
@@ -39,6 +40,9 @@ def build_system_prompt(
     else:
         style_parts = [NORMAL_STYLE, NORMAL_THINKING_PROMPT]
     parts = [BASE_SYSTEM, *style_parts, env]
+    persona = persona_section()
+    if persona:
+        parts.append(persona)
     if codegraph_enabled:
         parts.append(CODEGRAPH_GUIDANCE)
     if rtk_enabled:

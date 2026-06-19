@@ -22,6 +22,8 @@ _WATCH_FILES = [
     ".quill/hooks.json",
     ".quill/config.toml",
     ".quill/tools.json",
+    ".quill/mcp.json",
+    ".quill/mcp.reload",
 ]
 _WATCH_DIRS = [
     ".quill/commands",
