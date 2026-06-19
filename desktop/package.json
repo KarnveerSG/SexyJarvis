@@ -1,0 +1,35 @@
+{
+  "name": "quill-desktop",
+  "version": "0.2.0",
+  "description": "Quill IDE — multi-workspace AI terminal desktop",
+  "main": "main.js",
+  "author": "Quill",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable",
+    "build:dir": "electron-builder --win dir"
+  },
+  "build": {
+    "appId": "app.quill.desktop",
+    "productName": "Quill",
+    "directories": {
+      "output": "../dist/desktop"
+    },
+    "win": {
+      "target": ["portable", "dir"],
+      "artifactName": "Quill-${version}-portable.exe"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "integrations.js",
+      "renderer/**/*",
+      "assets/**/*"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}

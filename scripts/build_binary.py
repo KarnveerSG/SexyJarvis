@@ -1,7 +1,7 @@
-"""Build a standalone SexyJarvis binary.
+"""Build a standalone Quill binary.
 
-Windows: PyInstaller -> dist/sexyjarvis.exe
-Unix:    shiv         -> dist/sexyjarvis.pyz
+Windows: PyInstaller -> dist/quill.exe
+Unix:    shiv         -> dist/Quill.pyz
 
 Usage:
     python scripts/build_binary.py [--out PATH] [--install]
@@ -28,7 +28,7 @@ def _project_root() -> Path:
 
 def _install_dir() -> Path:
     if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Programs" / "SexyJarvis"
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Programs" / "Quill"
     return Path.home() / ".local" / "bin"
 
 
@@ -97,7 +97,7 @@ def build_windows(out_path: Path, extras: list[str]) -> int:
         "--paths",
         str(root),
         "--collect-submodules",
-        "sexyjarvis",
+        "quill",
         "--collect-all",
         "rich",
         "--collect-all",
@@ -137,7 +137,7 @@ def build_unix(out_path: Path, extras: list[str], python_shebang: str) -> int:
     cmd = [
         "shiv",
         "-c",
-        "sexyjarvis",
+        "quill",
         "-o",
         str(out_path),
         "-p",
@@ -154,8 +154,8 @@ def build_unix(out_path: Path, extras: list[str], python_shebang: str) -> int:
 
 
 def main() -> int:
-    default_out = "dist/sexyjarvis.exe" if sys.platform == "win32" else "dist/sexyjarvis.pyz"
-    parser = argparse.ArgumentParser(description="Build SexyJarvis as a standalone binary")
+    default_out = "dist/quill.exe" if sys.platform == "win32" else "dist/quill.pyz"
+    parser = argparse.ArgumentParser(description="Build Quill as a standalone binary")
     parser.add_argument("--out", default=default_out)
     parser.add_argument("--python", default="/usr/bin/env python3", help="Shebang for shiv (Unix only)")
     parser.add_argument(
@@ -186,7 +186,7 @@ def main() -> int:
     if args.install:
         dest = install_binary(out_path)
         print(f"Installed: {dest}")
-        print("Restart your terminal, then run: sexyjarvis")
+        print("Restart your terminal, then run: quill")
     else:
         install_dir = _install_dir()
         print(f"To call from anywhere, run with --install or copy to: {install_dir}")

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net data:;" />
+  <title>.quill</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="theme-dark">
+  <header class="titlebar">
+    <div class="brand">
+      <span class="brand-dot">.</span><span class="brand-name">quill</span>
+      <span class="brand-tag">CODE BEAUTIFUL</span>
+    </div>
+    <nav class="menu">
+      <button type="button" data-action="settings">Settings</button>
+      <button type="button" data-action="new-pane">+ Terminal</button>
+      <button type="button" data-action="toggle-theme">i mode</button>
+      <button type="button" data-action="palette">Ctrl+P</button>
+    </nav>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-title">WORKSPACES</div>
+      <ul id="workspace-list"></ul>
+      <button type="button" class="add-ws" id="add-workspace">+ Workspace</button>
+    </aside>
+    <main class="workspace">
+      <div id="pane-grid" class="pane-grid grid-2x2"></div>
+      <footer class="statusbar">
+        <span id="status-provider">Quill agent</span>
+        <span id="status-hints">esc interrupt · ctrl+p commands</span>
+        <span id="status-path"></span>
+      </footer>
+    </main>
+  </div>
+
+  <div id="settings" class="settings hidden">
+    <div class="settings-panel">
+      <header class="settings-header">
+        <h2>Settings</h2>
+        <button type="button" class="settings-close" id="settings-close">×</button>
+      </header>
+      <div class="settings-body">
+        <nav class="settings-nav" id="settings-nav"></nav>
+        <div class="settings-content" id="settings-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="palette" class="palette hidden">
+    <input id="palette-input" type="text" placeholder="Command palette…" autocomplete="off" />
+    <ul id="palette-list"></ul>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

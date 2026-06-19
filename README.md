@@ -1,59 +1,58 @@
-# SexyJarvis
+# Quill
 
-Terminal AI coding agent. Token-optimized by default.
+IDE-style AI coding agent. Multi-workspace terminal desktop + CLI agent.
 
-## Defaults (always on)
+**Tagline:** CODE BEAUTIFUL
 
-- **Caveman ultra** — terse output + terse extended-thinking fragments
-- **RTK** — compact shell output (`execute_bash` auto-wraps when `rtk` installed)
-- **CodeGraph** — `codegraph_*` tools when `.codegraph/` exists (`codegraph init` once per project)
-
-## Provider chain
-
-`auto` (default): **Cursor** (`auto` model) → **Claude API** → **local LLM** (LM Studio/Ollama)
-
-Keys in `%USERPROFILE%\.sexyjarvis\.env` work from any folder:
-
-```env
-CURSOR_API_KEY=crsr_...
-ANTHROPIC_API_KEY=sk-ant-...
-SEXYJARVIS_CURSOR_MODEL=auto
-LM_STUDIO_URL=http://localhost:1234/v1
-```
-
-## Install
+## Install (Windows)
 
 ```powershell
-pip install -e ".[cursor]"
+python scripts/install_quill.py
 ```
 
-## Binary (Windows)
-
-```powershell
-pip install -e ".[build,cursor]"
-python scripts/build_binary.py --install --with cursor
-```
-
-Then `sexyjarvis` from any terminal.
+This installs:
+- `quill` CLI on PATH (`%LOCALAPPDATA%\Programs\Quill\quill.exe`)
+- **Quill** desktop IDE shortcut on your Desktop
 
 ## Run
 
 ```powershell
-sexyjarvis
-sexyjarvis --yolo
-sexyjarvis -w E:\path\to\project
+quill                  # terminal agent (any folder)
+quill --desktop        # open desktop IDE
+quill -w E:\project    # agent in workspace
+quill --yolo           # skip confirmations
 ```
 
 ## Config
 
-Priority: CLI flags → env → workspace `.env` → `~/.sexyjarvis/.env` → `config.toml`
+Priority: CLI flags → env → workspace `.env` → `~/.quill/.env` → `config.toml`
 
-| Flag | Effect |
-|------|--------|
-| `--no-rtk` | Disable RTK wrapping |
-| `--no-codegraph` | Disable CodeGraph tools |
-| `--no-stream` | Disable streaming |
-| `SEXYJARVIS_THINKING_BUDGET=0` | Disable extended thinking |
+Legacy `~/.sexyjarvis/.env` is auto-migrated on install.
+
+```env
+CURSOR_API_KEY=crsr_...
+ANTHROPIC_API_KEY=sk-ant-...
+QUILL_CURSOR_MODEL=auto
+LM_STUDIO_URL=http://localhost:1234/v1
+```
+
+## Provider chain
+
+`auto` (default): **Cursor** → **Claude API** → **local LLM**
+
+## Desktop IDE
+
+- Rainbow color-coded workspaces
+- Split terminal grid (2×2 / 3×2)
+- Named AI personas per pane (Iris, Thea, Nova, Sage, Luna, Wren)
+- Dark mode + **i mode** light theme
+- Agent panes run `quill` REPL; shell panes run PowerShell
+
+## Defaults (CLI)
+
+- **Caveman ultra** — terse output
+- **RTK** — compact shell output
+- **CodeGraph** — when `.codegraph/` exists
 
 ## License
 

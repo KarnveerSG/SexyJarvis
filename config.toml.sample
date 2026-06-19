@@ -1,6 +1,6 @@
-# SexyJarvis config — copy to config.toml in workspace or ~/.sexyjarvis/config.toml
+# Quill config — copy to config.toml in workspace or ~/.quill/config.toml
 
-[sexyjarvis]
+[quill]
 provider = "auto"
 cursor_model = "auto"
 fallback_model = "claude-sonnet-4-20250514"

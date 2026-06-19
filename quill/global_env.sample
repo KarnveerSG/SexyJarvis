@@ -1,0 +1,17 @@
+# Global Quill config — used from any workspace.
+# Copy to %USERPROFILE%\.quill\.env
+
+# Cursor plan (primary) — Cursor Dashboard → API Keys
+# CURSOR_API_KEY=crsr_...
+
+# Claude API (fallback)
+# ANTHROPIC_API_KEY=sk-ant-...
+
+# Provider: auto (Cursor → Claude → local) | cursor | anthropic | local
+# QUILL_PROVIDER=auto
+# QUILL_CURSOR_MODEL=auto
+# QUILL_FALLBACK_MODEL=claude-sonnet-4-20250514
+
+# Local LLM (last-resort fallback) — LM Studio or Ollama
+# LM_STUDIO_URL=http://localhost:1234/v1
+# LM_MODEL=your-model-name

@@ -21,4 +21,6 @@ Thumbs.db
 *.log
 data/
 *.db
+.quill/
 .sexyjarvis/
+desktop/node_modules/
