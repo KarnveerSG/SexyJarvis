@@ -240,6 +240,22 @@ def test_themes() -> None:
             ok("themes", f"{len(expected)} themes, css aligned")
 
 
+def test_theme_apply_reset() -> None:
+    app = (DESKTOP / "renderer" / "app.js").read_text(encoding="utf-8")
+    if "THEME_CSS_VARS" not in app or "removeProperty" not in app:
+        fail("theme apply reset", "applyTheme must clear inline CSS vars when returning to Dark")
+    else:
+        ok("theme apply reset", "THEME_CSS_VARS cleared on switch")
+
+
+def test_scrollbar_css() -> None:
+    css = (DESKTOP / "renderer" / "styles.css").read_text(encoding="utf-8")
+    if "::-webkit-scrollbar-thumb" not in css or "--scrollbar-thumb" not in css:
+        fail("scrollbar css", "missing global scrollbar styling")
+    else:
+        ok("scrollbar css", "thin scrollbars + tokens")
+
+
 def test_desktop_launcher_candidates() -> None:
     code = """
 from quill.desktop_launcher import _desktop_candidates
@@ -293,6 +309,8 @@ def main() -> int:
         test_desktop_package_files,
         test_node_modules,
         test_themes,
+        test_theme_apply_reset,
+        test_scrollbar_css,
         test_ipc_wiring,
         test_asar_contents,
     ]

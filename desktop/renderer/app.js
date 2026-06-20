@@ -22,6 +22,16 @@ const TREE_SKIP = new Set(["node_modules", ".git", ".codegraph", "__pycache__", 
 const TREE_SKIP_FILES = /^NTUSER\.DAT|^ntuser\.dat|^desktop\.ini$/i;
 let agentPanelOpen = true;
 
+/** CSS vars that themed presets may set inline on <html> — must clear when switching back to Dark. */
+const THEME_CSS_VARS = [
+  "--bg", "--bg-panel", "--bg-header", "--bg-activity", "--border",
+  "--text", "--text-dim", "--accent", "--accent-purple",
+];
+
+function monacoThemeId() {
+  return state.theme === "imode" ? "vs" : "vs-dark";
+}
+
 function ptyWorkspaceId(ptyId) {
   for (const [, t] of termInstances) {
     if (t.ptyId === ptyId) return t.wsId;
@@ -451,12 +461,21 @@ function activeWs() {
 
 function applyTheme() {
   const t = bootstrap?.themes?.[state.theme] || bootstrap?.themes?.dark;
+  for (const key of THEME_CSS_VARS) {
+    document.documentElement.style.removeProperty(key);
+  }
   document.body.className = t?.cssClass || "theme-dark";
   if (t?.vars) {
-    for (const [k, v] of Object.entries(t.vars)) document.documentElement.style.setProperty(k, v);
+    for (const [k, v] of Object.entries(t.vars)) {
+      document.documentElement.style.setProperty(k, v);
+    }
   }
   for (const [, inst] of termInstances) {
     inst.term.options.theme = termTheme();
+    inst.term.refresh(0, inst.term.rows);
+  }
+  if (window.monaco?.editor) {
+    monaco.editor.setTheme(monacoThemeId());
   }
 }
 
@@ -686,7 +705,7 @@ function ensureMonaco() {
     const el = document.getElementById("monaco-editor");
     if (el && !monacoEditor) {
       monacoEditor = monaco.editor.create(el, {
-        theme: "vs-dark",
+        theme: monacoThemeId(),
         automaticLayout: true,
         minimap: { enabled: true },
         fontSize: 13,
@@ -703,7 +722,7 @@ function ensureMonaco() {
     const diffEl = document.getElementById("monaco-diff");
     if (diffEl && !monacoDiff) {
       monacoDiff = monaco.editor.createDiffEditor(diffEl, {
-        theme: "vs-dark",
+        theme: monacoThemeId(),
         automaticLayout: true,
         readOnly: true,
         renderSideBySide: true,
@@ -1477,11 +1496,13 @@ function renderSettingsContent() {
       <button type="button" class="btn-primary" id="save-appearance">Apply</button>
       <p class="settings-sub">Shortcut: Ctrl+Shift+I to cycle themes.</p>
     </div>`;
-    document.getElementById("save-appearance").onclick = () => {
+    const onThemeApply = () => {
       state.theme = document.getElementById("theme-select").value;
       applyTheme();
       persist();
     };
+    document.getElementById("save-appearance").onclick = onThemeApply;
+    document.getElementById("theme-select").onchange = onThemeApply;
     return;
   }
 

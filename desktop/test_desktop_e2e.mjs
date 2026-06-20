@@ -189,15 +189,22 @@ async function main() {
     else fail("monaco load", monacoOk.error || "no editor");
 
     await win.evaluate(() => {
-      const panel = document.getElementById("workspace-stage");
-      if (panel) panel.scrollIntoView?.();
+      document.getElementById("settings")?.classList.add("hidden");
+      document.getElementById("workspace-stage")?.scrollIntoView?.();
     });
     await win.keyboard.press("Control+`");
-    await win.waitForTimeout(10000);
-    const termOut = await win.evaluate(() => {
+    await win.waitForTimeout(12000);
+    let termOut = await win.evaluate(() => {
       const lines = document.querySelector(".xterm-rows")?.textContent || "";
       return { len: lines.length, hasQuill: /Quill|CodeGraph|agent/i.test(lines) };
     });
+    if (termOut.len <= 10) {
+      await win.waitForTimeout(5000);
+      termOut = await win.evaluate(() => {
+        const lines = document.querySelector(".xterm-rows")?.textContent || "";
+        return { len: lines.length, hasQuill: /Quill|CodeGraph|agent/i.test(lines) };
+      });
+    }
     if (termOut.len > 10) pass("terminal output", `${termOut.len} chars quill=${termOut.hasQuill}`);
     else fail("terminal output", "empty or too short");
 
@@ -209,6 +216,56 @@ async function main() {
     });
     if (composerTest.ok) pass("composer input");
     else fail("composer input", composerTest.error);
+
+    await win.click(".menu-item[data-menu='view'] .menu-trigger");
+    await win.waitForTimeout(200);
+    await win.click("[data-action='settings-appearance']");
+    await win.waitForTimeout(400);
+    const themeRoundtrip = await win.evaluate(async () => {
+      const select = document.getElementById("theme-select");
+      const save = document.getElementById("save-appearance");
+      if (!select || !save) return { error: "settings appearance missing" };
+      const readBg = () => getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+      select.value = "midnight";
+      save.click();
+      await new Promise((r) => setTimeout(r, 80));
+      const midnightBg = readBg();
+      const midnightClass = document.body.className;
+      select.value = "dark";
+      save.click();
+      await new Promise((r) => setTimeout(r, 80));
+      const darkBg = readBg();
+      const darkClass = document.body.className;
+      const inlineBg = document.documentElement.style.getPropertyValue("--bg");
+      return { midnightBg, darkBg, darkClass, midnightClass, inlineBg };
+    });
+    if (themeRoundtrip.error) fail("theme roundtrip", themeRoundtrip.error);
+    else if (
+      themeRoundtrip.darkClass.includes("theme-dark")
+      && themeRoundtrip.midnightBg !== themeRoundtrip.darkBg
+      && !themeRoundtrip.inlineBg
+      && (themeRoundtrip.darkBg === "#0b0b0b" || themeRoundtrip.darkBg === "rgb(11, 11, 11)")
+    ) {
+      pass("theme roundtrip", `dark=${themeRoundtrip.darkBg}`);
+    } else {
+      fail("theme roundtrip", JSON.stringify(themeRoundtrip));
+    }
+
+    const scrollbarCss = await win.evaluate(() => {
+      const sheets = [...document.styleSheets];
+      let found = false;
+      for (const sheet of sheets) {
+        try {
+          for (const rule of sheet.cssRules || []) {
+            if (rule.selectorText?.includes("::-webkit-scrollbar-thumb")) found = true;
+          }
+        } catch (_) {}
+      }
+      return { found, scrollbarWidth: getComputedStyle(document.documentElement).scrollbarWidth };
+    });
+    if (scrollbarCss.found || scrollbarCss.scrollbarWidth === "thin") {
+      pass("scrollbar styling", scrollbarCss.scrollbarWidth || "webkit rules");
+    } else fail("scrollbar styling", "no custom scrollbar rules");
 
     pass("session", "completed");
   } catch (e) {
