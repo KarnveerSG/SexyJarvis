@@ -35,6 +35,7 @@
         <button type="button" class="menu-trigger">View</button>
         <div class="menu-dropdown hidden">
           <button type="button" data-action="toggle-terminal">Terminal</button>
+          <button type="button" data-action="toggle-agent">Agent panel <span>Ctrl+L</span></button>
           <button type="button" data-action="settings-appearance">Themes…</button>
         </div>
       </div>
@@ -112,6 +113,7 @@
           <span id="ws-center-persona" class="ws-center-meta"></span>
         </div>
         <div class="ws-head-actions">
+          <button type="button" class="ws-head-btn" id="ws-toggle-agent" title="Stop or start workspace agent">Stop agent</button>
           <button type="button" class="ws-head-btn" id="ws-add-terminal" title="New terminal pane">+ Terminal</button>
           <button type="button" class="ws-head-btn" data-action="open-folder" title="Set folder">Open folder</button>
         </div>
@@ -168,7 +170,9 @@
         <span class="agent-title">Agent</span>
         <span class="agent-ws-label" id="agent-ws-label"></span>
         <select class="pane-persona-select" id="agent-persona" title="Persona"></select>
+        <button type="button" class="agent-icon-btn agent-header-btn" id="agent-panel-minimize" title="Minimize panel">─</button>
         <button type="button" class="agent-icon-btn agent-header-btn" id="agent-panel-hide" title="Hide panel">×</button>
+        <button type="button" class="agent-icon-btn agent-header-btn" id="agent-panel-expand" title="Expand panel">◀</button>
         <span class="pane-activity" id="agent-activity"></span>
       </header>
       <div id="agent-plan" class="agent-plan hidden">

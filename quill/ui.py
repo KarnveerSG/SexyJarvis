@@ -115,6 +115,19 @@ class UI:
         else:
             print(f"---- {title} ----" if title else "-" * 40)
 
+    def _emit_quill_reply(self, text: str) -> None:
+        if not self._desktop:
+            return
+        t = str(text or "").strip()
+        if not t:
+            return
+        import json
+        import sys
+        payload = json.dumps(t, ensure_ascii=False)
+        if len(payload) > 12000:
+            payload = json.dumps(t[:6000] + "\n…", ensure_ascii=False)
+        print(f"[QUILL_REPLY:{payload}]", file=sys.stderr, flush=True)
+
     def banner(self, model: str, workspace: str, memory_files: list[str], provider: str = "", fallback: bool = True):
         mem = ", ".join(memory_files) if memory_files else "none"
         fb = "Cursor → Claude → local" if fallback else "off"
@@ -175,6 +188,8 @@ class UI:
     def assistant_text(self, text: str, is_thinking: bool = False):
         if not text.strip():
             return
+        if not is_thinking:
+            self._emit_quill_reply(text)
         if self.console:
             style = "dim" if is_thinking else "default"
             title = "🤔 Thinking" if is_thinking else "✨ Quill"

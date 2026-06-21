@@ -129,7 +129,8 @@ const QuillCowork = (() => {
   }
 
   function parseStream(raw) {
-    const clean = String(raw || "").replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\r/g, "");
+    const clean = window.QuillAgentStream?.stripAnsi(raw)
+      ?? String(raw || "").replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/\r/g, "");
     const taskM = clean.match(/\[QUILL_TASK:([^\]]+)\]/);
     if (taskM) ingestTasks(taskM[1]);
     const browserM = clean.match(/\[QUILL_BROWSER:([^\]\r\n]+)\]/);

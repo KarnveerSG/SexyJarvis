@@ -256,6 +256,15 @@ def test_scrollbar_css() -> None:
         ok("scrollbar css", "thin scrollbars + tokens")
 
 
+def test_agent_chat_filtering() -> None:
+    app = (DESKTOP / "renderer" / "app.js").read_text(encoding="utf-8")
+    ui = (ROOT / "quill" / "ui.py").read_text(encoding="utf-8")
+    if "isTerminalNoise" not in app or "QUILL_REPLY" not in ui:
+        fail("agent chat filter", "missing noise filter or QUILL_REPLY emitter")
+    else:
+        ok("agent chat filter", "PTY off by default + structured replies")
+
+
 def test_desktop_launcher_candidates() -> None:
     code = """
 from quill.desktop_launcher import _desktop_candidates
@@ -311,6 +320,7 @@ def main() -> int:
         test_themes,
         test_theme_apply_reset,
         test_scrollbar_css,
+        test_agent_chat_filtering,
         test_ipc_wiring,
         test_asar_contents,
     ]

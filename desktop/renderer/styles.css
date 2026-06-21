@@ -219,6 +219,128 @@ html, body {
 body.agent-hidden .agent-panel { display: none; }
 
 .agent-panel.hidden { display: none; }
+
+.agent-panel.minimized {
+  width: 32px;
+  min-width: 32px;
+  cursor: pointer;
+}
+.agent-panel.minimized .agent-chat,
+.agent-panel.minimized .agent-composer-wrap,
+.agent-panel.minimized .agent-plan,
+.agent-panel.minimized .agent-ws-label,
+.agent-panel.minimized .pane-persona-select,
+.agent-panel.minimized .agent-activity,
+.agent-panel.minimized #agent-panel-minimize,
+.agent-panel.minimized #agent-panel-hide {
+  display: none !important;
+}
+.agent-panel.minimized .agent-header {
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  height: 100%;
+  border-bottom: none;
+}
+.agent-panel.minimized .agent-title {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+.agent-panel.minimized #agent-panel-expand {
+  display: flex !important;
+}
+#agent-panel-expand { display: none; }
+.agent-panel.minimized .agent-header-btn { margin-left: 0; }
+
+.ws-head-btn-danger {
+  color: #e06c75;
+  border-color: rgba(224, 108, 117, 0.35);
+}
+.ws-head-btn-danger:hover {
+  color: #ff8a93;
+  border-color: rgba(224, 108, 117, 0.55);
+}
+.ws-head-btn-start {
+  color: var(--accent);
+  border-color: rgba(55, 148, 255, 0.35);
+}
+
+.ws-item-actions {
+  display: none;
+  margin-left: auto;
+  gap: 2px;
+}
+.ws-item:hover .ws-item-actions { display: flex; }
+.ws-item:hover .ws-badge { display: none; }
+.ws-item-action {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ws-item-action:hover {
+  background: rgba(224, 108, 117, 0.15);
+  color: #e06c75;
+}
+.ws-item-action.start:hover {
+  background: rgba(55, 148, 255, 0.15);
+  color: var(--accent);
+}
+.ws-item.agent-stopped .ws-dot { opacity: 0.45; }
+
+.pane-grid.agent-stopped { position: relative; }
+.agent-stopped-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(11, 11, 11, 0.82);
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.agent-composer-wrap.agent-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.ws-context-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.ws-context-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.ws-context-menu button:hover { background: rgba(255, 255, 255, 0.06); }
+.ws-context-menu button.danger { color: #e06c75; }
 .agent-ws-label {
   font-size: 10px;
   color: var(--text-dim);
@@ -367,6 +489,11 @@ body.agent-hidden .agent-panel { display: none; }
   color: var(--text);
   border-color: rgba(55, 148, 255, 0.45);
   background: rgba(55, 148, 255, 0.08);
+}
+.agent-icon-btn.active {
+  color: var(--accent);
+  border-color: rgba(55, 148, 255, 0.55);
+  background: rgba(55, 148, 255, 0.14);
 }
 
 .empty-state {
@@ -583,8 +710,9 @@ body.theme-forest { --bg: #0f1a14; --bg-panel: #152019; --bg-header: #1a2820; --
   list-style: none;
   flex: 1;
   overflow-y: auto;
-  padding: 4px 8px;
+  padding: 4px 0;
   min-height: 0;
+  margin: 0;
 }
 
 .ws-item {
@@ -651,33 +779,79 @@ body.theme-forest { --bg: #0f1a14; --bg-panel: #152019; --bg-header: #1a2820; --
 }
 .file-tree-panel summary::-webkit-details-marker { display: none; }
 
-.file-tree {
-  list-style: none;
-  flex: 1;
-  overflow-y: auto;
-  margin-top: 6px;
-  padding: 0 4px;
-}
-
 .tree-item {
+  display: block;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tree-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
+  gap: 4px;
+  padding: 3px 8px 3px 0;
   border-radius: 4px;
   font-size: 0.78rem;
   cursor: pointer;
+  min-height: 22px;
 }
-.tree-item:hover { background: rgba(126, 184, 255, 0.08); }
-.tree-dir { color: var(--accent); cursor: default; }
-.tree-file { color: var(--text-dim); }
-.tree-icon { width: 10px; flex-shrink: 0; font-size: 0.65rem; }
-.tree-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-empty { font-size: 0.75rem; color: var(--text-dim); padding: 4px 6px; }
-.tree-children { list-style: none; margin: 0; padding: 0; }
-.tree-dir { cursor: pointer; }
-.tree-dir.expanded > .tree-icon { display: inline-block; transform: rotate(90deg); }
-.tree-item.selected { background: rgba(126, 184, 255, 0.15); color: var(--text); }
+.tree-row:hover { background: rgba(126, 184, 255, 0.08); }
+.tree-item.selected > .tree-row {
+  background: rgba(126, 184, 255, 0.15);
+  color: var(--text);
+}
+.tree-dir > .tree-row .tree-name { color: var(--text); }
+.tree-file > .tree-row .tree-name { color: var(--text-dim); }
+.tree-chevron {
+  width: 14px;
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  line-height: 1;
+  color: var(--text-dim);
+  transition: transform 0.12s ease;
+  text-align: center;
+}
+.tree-chevron-spacer { visibility: hidden; }
+.tree-dir.expanded > .tree-row .tree-chevron { transform: rotate(90deg); }
+.tree-kind {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+.tree-kind-folder::before { content: "▣"; color: var(--accent); font-size: 0.62rem; }
+.tree-kind-file::before { content: "◦"; color: var(--text-dim); font-size: 0.55rem; }
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tree-root > .tree-row .tree-name { font-weight: 600; }
+.tree-empty { font-size: 0.75rem; color: var(--text-dim); padding: 4px 12px; list-style: none; }
+.tree-add-root { list-style: none; padding: 6px 8px 2px; }
+.tree-add-root-btn {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  cursor: pointer;
+  text-align: left;
+}
+.tree-add-root-btn:hover { border-color: var(--accent); color: var(--text); }
 
 .editor-drawer {
   flex-shrink: 0;

@@ -59,6 +59,9 @@ async function main() {
       emptyState: !!document.getElementById("empty-state"),
       editorArea: !!document.getElementById("editor-area"),
       agentPanel: !!document.getElementById("agent-panel"),
+      agentPanelMinimize: !!document.getElementById("agent-panel-minimize"),
+      wsToggleAgent: !!document.getElementById("ws-toggle-agent"),
+      agentStreamToggle: !!document.getElementById("agent-stream-toggle"),
       agentChat: !!document.getElementById("agent-chat"),
       agentComposer: !!document.getElementById("agent-composer-input"),
       agentPlan: !!document.getElementById("agent-plan"),
@@ -266,6 +269,20 @@ async function main() {
     if (scrollbarCss.found || scrollbarCss.scrollbarWidth === "thin") {
       pass("scrollbar styling", scrollbarCss.scrollbarWidth || "webkit rules");
     } else fail("scrollbar styling", "no custom scrollbar rules");
+
+    const panelToggle = await win.evaluate(() => {
+      const panel = document.getElementById("agent-panel");
+      const hide = document.getElementById("agent-panel-hide");
+      if (!panel || !hide) return { error: "agent panel controls missing" };
+      hide.click();
+      const closed = panel.classList.contains("hidden");
+      document.querySelector('.activity-btn[data-panel="agent"]')?.click();
+      const open = !panel.classList.contains("hidden");
+      return { closed, open };
+    });
+    if (panelToggle.error) fail("agent panel toggle", panelToggle.error);
+    else if (panelToggle.closed && panelToggle.open) pass("agent panel toggle", "hide + expand");
+    else fail("agent panel toggle", JSON.stringify(panelToggle));
 
     pass("session", "completed");
   } catch (e) {

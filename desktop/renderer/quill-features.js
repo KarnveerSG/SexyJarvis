@@ -8,6 +8,12 @@ const QuillFeatures = (() => {
   let pendingEditPath = null;
   let customKeybindings = {};
   let deps = null;
+  const seenToolCards = new Set();
+  const seenAgentReplies = new Set();
+
+  function stripStream(raw) {
+    return window.QuillAgentStream?.stripAnsi(raw) ?? String(raw || "").replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/\r/g, "");
+  }
 
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -150,6 +156,13 @@ const QuillFeatures = (() => {
   }
 
   function appendToolCard(name, detail) {
+    const key = `${name}:${detail}`;
+    if (seenToolCards.has(key)) return;
+    seenToolCards.add(key);
+    if (seenToolCards.size > 200) {
+      const first = seenToolCards.values().next().value;
+      seenToolCards.delete(first);
+    }
     const box = document.getElementById("agent-chat");
     if (!box) return;
     const el = document.createElement("div");
@@ -160,11 +173,41 @@ const QuillFeatures = (() => {
     box.scrollTop = box.scrollHeight;
   }
 
+  function appendAgentReply(text) {
+    const body = String(text || "").trim();
+    if (!body || seenAgentReplies.has(body)) return;
+    seenAgentReplies.add(body);
+    if (seenAgentReplies.size > 100) {
+      const first = seenAgentReplies.values().next().value;
+      seenAgentReplies.delete(first);
+    }
+    const box = document.getElementById("agent-chat");
+    if (!box) return;
+    const el = document.createElement("div");
+    el.className = "chat-msg agent";
+    el.textContent = body;
+    box.appendChild(el);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function parseQuillReplies(clean) {
+    const re = /\[QUILL_REPLY:([^\]\r\n]+)\]/g;
+    let m;
+    while ((m = re.exec(clean)) !== null) {
+      try {
+        appendAgentReply(JSON.parse(m[1]));
+      } catch (_) {
+        appendAgentReply(m[1]);
+      }
+    }
+  }
+
   function parseAgentStream(raw) {
     if (window.QuillCowork) {
       window.QuillCowork.parseStream(raw);
     }
-    const clean = String(raw || "").replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\r/g, "");
+    const clean = stripStream(raw);
+    parseQuillReplies(clean);
     const toolRe = /\[QUILL_TOOL:([^:\]]+):([^\]\r\n]*)\]/g;
     let m;
     while ((m = toolRe.exec(clean)) !== null) appendToolCard(m[1], m[2]);
