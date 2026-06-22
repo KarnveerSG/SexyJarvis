@@ -13,7 +13,7 @@ try {
   nodePty = require("node-pty");
 } catch (_) {}
 
-const PERSONAS = ["Iris", "Thea", "Nova", "Sage", "Luna", "Wren"];
+const PERSONAS = ["Hera", "Artemis", "Athena", "Demeter", "Aphrodite", "Hestia", "Persephone", "Hecate", "Nike"];
 const RAINBOW = ["#FF6B6B", "#FF9F43", "#FECA57", "#1DD1A1", "#54A0FF", "#5F27CD", "#A29BFE"];
 
 let mainWindow = null;
@@ -291,7 +291,7 @@ function defaultState() {
     }],
     activeWorkspace: "ws-main",
     theme: "dark",
-    panes: { [paneId]: { persona: "Iris", mode: "agent" } },
+    panes: { [paneId]: { persona: "Hera", mode: "agent" } },
   };
 }
 
@@ -349,7 +349,7 @@ function createWindow() {
 
 function spawnTerm(id, opts) {
   const cwd = opts.cwd || os.homedir();
-  const persona = opts.persona || "Iris";
+  const persona = opts.persona || "Hera";
   const quill = quillCliPath();
   const args = ["-w", cwd, "--no-speech"];
   if (opts.named) args.push("--resume");

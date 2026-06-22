@@ -29,6 +29,8 @@ const TREE_SKIP_FILES = /^NTUSER\.DAT|^ntuser\.dat|^desktop\.ini$/i;
 let agentPanelMode = "open";
 /** When false (default), only structured markers + prose replies reach agent chat. */
 let agentPtyToChat = false;
+const MAX_PANES = 9;
+const DEFAULT_PERSONA = "Hera";
 
 /** CSS vars that themed presets may set inline on <html> — must clear when switching back to Dark. */
 const THEME_CSS_VARS = [
@@ -168,6 +170,10 @@ async function init() {
     if (ws.named == null) ws.named = false;
     if (ws.agentStopped == null) ws.agentStopped = false;
   });
+  for (const ws of state.workspaces || []) {
+    await sanitizeWorkspacePanes(ws);
+  }
+  persist();
   if (state.agentPanelMode == null) {
     state.agentPanelMode = state.agentPanelOpen === false ? "closed" : "open";
   }
@@ -302,7 +308,7 @@ function resetDefaultState() {
     folders: [], panes: 1, layout: "grid-1x1", paneIds: [paneId], named: false,
   }];
   state.activeWorkspace = "ws-main";
-  state.panes = { [paneId]: { persona: "Iris", mode: "agent" } };
+  state.panes = { [paneId]: { persona: DEFAULT_PERSONA, mode: "agent" } };
 }
 
 function appendAgentChat(role, text) {
@@ -560,7 +566,10 @@ function updateWorkspaceHead() {
   const toggleBtn = document.getElementById("ws-toggle-agent");
   if (!ws) return;
   if (nameEl) nameEl.textContent = ws.name;
-  if (dot) dot.style.background = ws.color;
+  if (dot) {
+    const running = isWorkspaceAgentRunning(ws);
+    dot.style.background = running ? "#4ec994" : "#e06c75";
+  }
   const pid = ws.paneIds?.[0];
   const persona = pid ? state.panes[pid]?.persona : "";
   if (personaEl) personaEl.textContent = persona ? `· ${persona}` : "";
@@ -577,12 +586,17 @@ function updateWorkspaceHead() {
   document.getElementById("status-path").textContent = ws.cwd || folder;
 }
 
+let fitTerminalsRaf = null;
 function fitActiveTerminals() {
-  const ws = activeWs();
-  if (!ws?.paneIds) return;
-  for (const paneId of ws.paneIds) {
-    termInstances.get(paneId)?.fit?.fit();
-  }
+  if (fitTerminalsRaf) return;
+  fitTerminalsRaf = requestAnimationFrame(() => {
+    fitTerminalsRaf = null;
+    const ws = activeWs();
+    if (!ws?.paneIds) return;
+    for (const paneId of ws.paneIds) {
+      termInstances.get(paneId)?.fit?.fit();
+    }
+  });
 }
 
 function getWsGrid(ws) {
@@ -599,12 +613,19 @@ function getWsGrid(ws) {
   return grid;
 }
 
+function updateCenterView() {
+  document.getElementById("empty-state")?.classList.add("hidden");
+  const ws = activeWs();
+  if (ws) {
+    document.getElementById("workspace-center-head")?.classList.remove("hidden");
+  }
+}
+
 function showWorkspaceGrid(wsId) {
   document.querySelectorAll(".ws-pane-grid").forEach((g) => {
     g.classList.toggle("hidden", g.dataset.wsId !== wsId);
   });
-  document.getElementById("workspace-center-head")?.classList.remove("hidden");
-  document.getElementById("empty-state")?.classList.add("hidden");
+  updateCenterView();
   updateWorkspaceHead();
   setTimeout(() => fitActiveTerminals(), 150);
 }
@@ -621,13 +642,7 @@ function toggleTerminalPanel() {
   const ws = activeWs();
   if (!ws) return;
   showWorkspaceGrid(ws.id);
-  const activeEl = document.activeElement;
-  const focusedInTerminal = ws.paneIds?.some((id) => {
-    const host = document.getElementById(`term-${id}`);
-    return host?.contains(activeEl);
-  });
-  if (focusedInTerminal) void addPane();
-  else focusWorkspaceTerminal();
+  focusWorkspaceTerminal();
 }
 
 function bindActivityBar() {
@@ -680,6 +695,61 @@ function bindSideSearch() {
   };
 }
 
+function pickUnusedPersonaFromUsed(used) {
+  const personas = bootstrap?.personas || [DEFAULT_PERSONA];
+  for (const p of personas) {
+    if (!used.has(p)) return p;
+  }
+  return personas[0];
+}
+
+function pickUnusedPersona(ws) {
+  const used = new Set(
+    (ws?.paneIds || []).map((id) => state.panes[id]?.persona).filter(Boolean)
+  );
+  return pickUnusedPersonaFromUsed(used);
+}
+
+async function sanitizeWorkspacePanes(ws) {
+  if (!ws?.paneIds?.length) return;
+  let changed = false;
+
+  if (ws.paneIds.length > MAX_PANES) {
+    const removed = ws.paneIds.splice(MAX_PANES);
+    for (const paneId of removed) {
+      const t = termInstances.get(paneId);
+      if (t) {
+        await window.quill.ptyKill(t.ptyId);
+        t.term.dispose();
+        termInstances.delete(paneId);
+      }
+      delete state.panes[paneId];
+    }
+    changed = true;
+  }
+
+  const used = new Set();
+  for (const paneId of ws.paneIds) {
+    if (!state.panes[paneId]) {
+      state.panes[paneId] = { persona: pickUnusedPersonaFromUsed(used), mode: "agent" };
+      used.add(state.panes[paneId].persona);
+      changed = true;
+      continue;
+    }
+    let persona = state.panes[paneId].persona;
+    if (used.has(persona)) {
+      persona = pickUnusedPersonaFromUsed(used);
+      state.panes[paneId].persona = persona;
+      changed = true;
+    }
+    used.add(persona);
+  }
+
+  ws.panes = ws.paneIds.length;
+  ws.layout = layoutForPaneCount(ws.paneIds.length);
+  if (changed) persist();
+}
+
 function getAgentDelegatePaneId(ws) {
   const sel = document.getElementById("agent-delegate");
   const val = sel?.value || "primary";
@@ -692,22 +762,16 @@ function populateAgentPersona() {
   const sel = document.getElementById("agent-persona");
   const ws = agentPanelWs();
   const paneId = getAgentDelegatePaneId(ws);
-  if (!sel || !bootstrap?.personas || !paneId) return;
-  const meta = state.panes[paneId] || { persona: "Iris" };
+  if (!sel || !paneId) return;
+  const meta = state.panes[paneId] || { persona: DEFAULT_PERSONA };
   const paneCount = ws?.paneIds?.length || 1;
   const paneIdx = (ws.paneIds || []).indexOf(paneId);
   const paneLabel = paneCount > 1 ? `Pane ${paneIdx + 1}` : "Primary pane";
   sel.title = `${paneLabel} persona`;
   sel.setAttribute("aria-label", `${paneLabel} persona`);
-  sel.innerHTML = bootstrap.personas.map((p) =>
-    `<option value="${escHtml(p)}"${p === meta.persona ? " selected" : ""}>${escHtml(p)}</option>`
-  ).join("");
-  sel.onchange = async () => {
-    state.panes[paneId].persona = sel.value;
-    persist();
-    await remountPane(paneId);
-    window.QuillCowork?.populateDelegateSelect();
-  };
+  sel.innerHTML = `<option selected disabled>${escHtml(meta.persona)}</option>`;
+  sel.disabled = true;
+  sel.onchange = null;
 }
 
 function bindGlobalComposer() {
@@ -1255,8 +1319,8 @@ function closeEditor() {
   editorDirty = false;
   window.QuillFeatures?.getOpenTabs()?.clear?.();
   document.getElementById("editor-area")?.classList.add("hidden");
-  document.getElementById("empty-state")?.classList.remove("hidden");
   document.getElementById("inline-diff-bar")?.classList.add("hidden");
+  updateCenterView();
   updateTitlebar();
   window.QuillFeatures?.renderTabs?.();
 }
@@ -1287,7 +1351,7 @@ async function openFileInEditor(filePath) {
   editorDirty = false;
   const title = document.getElementById("editor-title");
   if (!monacoEditor) return;
-  document.getElementById("empty-state")?.classList.add("hidden");
+  updateCenterView();
   document.getElementById("editor-area")?.classList.remove("hidden");
   if (title) title.textContent = filePath.split(/[/\\]/).pop() || filePath;
   monacoEditor.setModel(monaco.editor.createModel(res.content, guessMonacoLang(filePath)));
@@ -1301,6 +1365,16 @@ async function openFileInEditor(filePath) {
   });
 }
 
+function fileIconClass(name) {
+  const ext = (name.match(/\.[^.]+$/)?.[0] || "").toLowerCase();
+  if (ext === ".py") return "tree-kind-python";
+  if (ext === ".md") return "tree-kind-md";
+  if ([".json", ".toml", ".yaml", ".yml"].includes(ext)) return "tree-kind-config";
+  if ([".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs"].includes(ext)) return "tree-kind-js";
+  if ([".html", ".css", ".scss", ".less"].includes(ext)) return "tree-kind-web";
+  return "tree-kind-file";
+}
+
 function treeRowHtml(depth, isDir, name, gitBadge = "") {
   const pad = 4 + depth * 14;
   const chevron = isDir
@@ -1308,7 +1382,7 @@ function treeRowHtml(depth, isDir, name, gitBadge = "") {
     : `<span class="tree-chevron tree-chevron-spacer" aria-hidden="true">›</span>`;
   const kind = isDir
     ? `<span class="tree-kind tree-kind-folder" aria-hidden="true"></span>`
-    : `<span class="tree-kind tree-kind-file" aria-hidden="true"></span>`;
+    : `<span class="tree-kind ${fileIconClass(name)}" aria-hidden="true"></span>`;
   return `<div class="tree-row" style="padding-left:${pad}px">${chevron}${kind}<span class="tree-name">${escHtml(name)}</span>${gitBadge}</div>`;
 }
 
@@ -1350,6 +1424,39 @@ async function appendTreeDir(parentUl, dirPath, depth) {
   }
 }
 
+let treeRootContextMenuEl = null;
+function hideTreeRootContextMenu() {
+  treeRootContextMenuEl?.remove();
+  treeRootContextMenuEl = null;
+}
+
+function showTreeRootContextMenu(e, folderPath) {
+  hideTreeRootContextMenu();
+  e.preventDefault();
+  const menu = document.createElement("div");
+  menu.className = "pane-context-menu";
+  menu.style.left = `${e.clientX}px`;
+  menu.style.top = `${e.clientY}px`;
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "danger";
+  removeBtn.textContent = "Remove folder from workspace";
+  removeBtn.onclick = () => { hideTreeRootContextMenu(); void removeFolderFromWorkspace(folderPath); };
+  menu.appendChild(removeBtn);
+  document.body.appendChild(menu);
+  treeRootContextMenuEl = menu;
+  const close = (ev) => {
+    if (menu.contains(ev.target)) return;
+    hideTreeRootContextMenu();
+    document.removeEventListener("click", close);
+    document.removeEventListener("contextmenu", close);
+  };
+  setTimeout(() => {
+    document.addEventListener("click", close);
+    document.addEventListener("contextmenu", close);
+  }, 0);
+}
+
 async function appendTreeRoot(parentUl, rootPath) {
   const name = rootPath.split(/[/\\]/).pop() || rootPath;
   const expanded = expandedDirs.has(rootPath);
@@ -1358,12 +1465,14 @@ async function appendTreeRoot(parentUl, rootPath) {
   li.dataset.path = rootPath;
   li.title = rootPath;
   li.innerHTML = treeRowHtml(0, true, name);
-  li.querySelector(".tree-row").onclick = async (e) => {
+  const row = li.querySelector(".tree-row");
+  row.onclick = async (e) => {
     e.stopPropagation();
     if (expandedDirs.has(rootPath)) expandedDirs.delete(rootPath);
     else expandedDirs.add(rootPath);
     await renderFileTree();
   };
+  row.addEventListener("contextmenu", (e) => showTreeRootContextMenu(e, rootPath));
   parentUl.appendChild(li);
   if (expanded) {
     const childUl = document.createElement("ul");
@@ -1373,7 +1482,10 @@ async function appendTreeRoot(parentUl, rootPath) {
   }
 }
 
-async function renderFileTree() {
+let renderFileTreeTimer = null;
+let renderFileTreeWaiters = [];
+
+async function renderFileTreeImpl() {
   const ul = document.getElementById("file-tree");
   if (!ul) return;
   const ws = activeWs();
@@ -1404,6 +1516,18 @@ async function renderFileTree() {
   if (!ul.querySelector(".tree-item")) {
     ul.innerHTML = `<li class="tree-empty">No files in folder</li>`;
   }
+}
+
+function renderFileTree() {
+  return new Promise((resolve) => {
+    renderFileTreeWaiters.push(resolve);
+    clearTimeout(renderFileTreeTimer);
+    renderFileTreeTimer = setTimeout(async () => {
+      const waiters = renderFileTreeWaiters.splice(0);
+      await renderFileTreeImpl();
+      waiters.forEach((r) => r());
+    }, 80);
+  });
 }
 
 function renderWsFolderRoots() {
@@ -1437,7 +1561,7 @@ async function ensureWorkspaceUI(ws) {
   if (!ws.paneIds?.length) {
     const paneId = `pane-${ws.id}-0`;
     ws.paneIds = [paneId];
-    state.panes[paneId] = { persona: "Iris", mode: "agent" };
+    state.panes[paneId] = { persona: DEFAULT_PERSONA, mode: "agent" };
   }
 
   applyGridLayout(grid, ws);
@@ -1453,7 +1577,7 @@ function layoutForPaneCount(n) {
   if (n <= 1) return "grid-1x1";
   if (n === 2) return "split-h2";
   if (n <= 4) return "grid-2x2";
-  return "grid-3x2";
+  return "grid-3x3";
 }
 
 function applyGridLayout(grid, ws) {
@@ -1533,6 +1657,10 @@ function bindPaneHeader(el, paneId) {
     e.preventDefault();
     showPaneContextMenu(e, paneId);
   });
+  el.querySelector(".pane-term")?.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    showPaneContextMenu(e, paneId);
+  });
   el.querySelector(".pane-close")?.addEventListener("click", (e) => {
     e.stopPropagation();
     void removePane(paneId);
@@ -1555,7 +1683,7 @@ async function renderPanes() {
 }
 
 function createPaneElement(paneId, ws) {
-  const meta = state.panes[paneId] || { persona: "Iris", mode: "agent" };
+  const meta = state.panes[paneId] || { persona: DEFAULT_PERSONA, mode: "agent" };
   state.panes[paneId] = meta;
   const el = document.createElement("div");
   el.className = "pane";
@@ -1588,7 +1716,7 @@ async function mountTerminal(paneId, ws) {
   const host = document.getElementById(`term-${paneId}`);
   if (!host || termInstances.has(paneId)) return;
 
-  const meta = state.panes[paneId] || { persona: "Iris", mode: "agent" };
+  const meta = state.panes[paneId] || { persona: DEFAULT_PERSONA, mode: "agent" };
   const term = new Terminal({
     cursorBlink: true,
     fontSize: 13,
@@ -1614,7 +1742,11 @@ async function mountTerminal(paneId, ws) {
   term.onData((data) => window.quill.ptyWrite(id, data));
   if (paneId === primaryPaneId) bindGlobalComposer();
 
+  let lastResizeAt = 0;
   const ro = new ResizeObserver(() => {
+    const now = Date.now();
+    if (now - lastResizeAt < 100) return;
+    lastResizeAt = now;
     if (fit) fit.fit();
     window.quill.ptyResize(id, term.cols, term.rows);
   });
@@ -1720,14 +1852,14 @@ async function addPane(personaOverride) {
   const ws = activeWs();
   if (!ws) return;
   if (ws.agentStopped) await startWorkspaceAgent(ws.id);
-  if (ws.paneIds.length >= 6) {
-    showToast("Maximum 6 terminal panes");
+  if (ws.paneIds.length >= MAX_PANES) {
+    showToast(`Maximum ${MAX_PANES} terminal panes`);
     return;
   }
   const paneId = `pane-${Date.now()}`;
   ws.paneIds = ws.paneIds || [];
+  const persona = personaOverride || pickUnusedPersona(ws);
   ws.paneIds.push(paneId);
-  const persona = personaOverride || bootstrap.personas[ws.paneIds.length % bootstrap.personas.length];
   state.panes[paneId] = { persona, mode: "agent" };
   ws.panes = ws.paneIds.length;
   ws.layout = layoutForPaneCount(ws.paneIds.length);
@@ -1788,16 +1920,17 @@ function showPaneContextMenu(e, paneId) {
 
 async function splitPaneRight(paneId) {
   const ws = activeWs();
-  if (!ws || ws.paneIds.length >= 6) {
-    showToast("Maximum 6 terminal panes");
+  if (!ws || ws.paneIds.length >= MAX_PANES) {
+    showToast(`Maximum ${MAX_PANES} terminal panes`);
     return;
   }
   if (ws.agentStopped) await startWorkspaceAgent(ws.id);
   const idx = ws.paneIds.indexOf(paneId);
   const meta = state.panes[paneId];
+  const persona = pickUnusedPersona(ws);
   const newPaneId = `pane-${Date.now()}`;
   ws.paneIds.splice(idx + 1, 0, newPaneId);
-  state.panes[newPaneId] = { persona: meta?.persona || "Iris", mode: meta?.mode || "agent" };
+  state.panes[newPaneId] = { persona, mode: meta?.mode || "agent" };
   ws.panes = ws.paneIds.length;
   ws.layout = layoutForPaneCount(ws.paneIds.length);
   persist();
@@ -1806,8 +1939,7 @@ async function splitPaneRight(paneId) {
 }
 
 async function duplicatePane(paneId) {
-  const meta = state.panes[paneId];
-  await addPane(meta?.persona);
+  await addPane();
 }
 
 async function openFolder() {
@@ -1850,6 +1982,32 @@ async function addFolderToWorkspace() {
   showToast("Folder added to workspace");
 }
 
+async function removeFolderFromWorkspace(folderPath) {
+  const ws = activeWs();
+  if (!ws) return;
+  if (!ws.folders?.length) ws.folders = ws.cwd ? [ws.cwd] : [];
+  const roots = [...new Set(ws.folders.filter(Boolean))];
+  const idx = roots.findIndex((r) => pathsEqual(r, folderPath));
+  if (idx < 0) return;
+  if (roots.length <= 1) {
+    showToast("Cannot remove the only folder in workspace");
+    return;
+  }
+  ws.folders = ws.folders.filter((f) => !pathsEqual(f, folderPath));
+  if (pathsEqual(ws.cwd, folderPath)) {
+    ws.cwd = ws.folders[0] || "";
+    if (!ws.cwd) ws.named = false;
+    ws.name = ws.cwd ? ws.cwd.split(/[/\\]/).pop() || ws.name : ws.name;
+  }
+  expandedDirs.delete(folderPath);
+  persist();
+  renderWorkspaces();
+  await renderFileTree();
+  updateTitlebar();
+  updateWorkspaceHead();
+  showToast("Folder removed from workspace");
+}
+
 async function openWorkspaceFile() {
   const file = await window.quill.pickWorkspaceFile();
   if (!file) return;
@@ -1865,8 +2023,9 @@ async function openWorkspaceFile() {
   ws.named = true;
   state.workspaces.push(ws);
   ws.paneIds.forEach((pid) => {
-    if (!state.panes[pid]) state.panes[pid] = { persona: "Iris", mode: "agent" };
+    if (!state.panes[pid]) state.panes[pid] = { persona: DEFAULT_PERSONA, mode: "agent" };
   });
+  await sanitizeWorkspacePanes(ws);
   persist();
   await switchWorkspace(ws.id);
 }
@@ -2099,11 +2258,14 @@ function closeSettings() {
 function renderSettingsNav() {
   const nav = document.getElementById("settings-nav");
   if (!nav || !bootstrap) return;
-  nav.innerHTML = bootstrap.settingsSections.map((s) =>
-    `<button type="button" class="settings-nav-item${s.id === settingsSection ? " active" : ""}" data-section="${s.id}">
-      <span class="nav-icon">${s.icon}</span>${s.label}${s.comingSoon ? ' <em class="soon">Soon</em>' : ""}
-    </button>`
-  ).join("");
+  nav.innerHTML = bootstrap.settingsSections.map((s) => {
+    const comingSoon = s.comingSoon ? '<em class="soon">Soon</em>' : "";
+    return `<button type="button" class="settings-nav-item${s.id === settingsSection ? " active" : ""}" data-section="${s.id}">
+      <span class="nav-icon">${s.icon}</span>
+      <span class="nav-label">${s.label}</span>
+      ${comingSoon}
+    </button>`;
+  }).join("");
   nav.querySelectorAll(".settings-nav-item").forEach((btn) => {
     btn.onclick = () => {
       settingsSection = btn.dataset.section;

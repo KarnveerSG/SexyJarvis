@@ -156,7 +156,11 @@ html, body {
   opacity: 0;
   transition: opacity 0.15s ease;
 }
-.panel-view.active { display: flex; opacity: 1; }
+.panel-view.active {
+  display: flex;
+  opacity: 1;
+  will-change: opacity;
+}
 .panel-header {
   display: flex;
   align-items: center;
@@ -242,6 +246,7 @@ html, body {
   flex-direction: column;
   min-height: 0;
   background: var(--bg-panel);
+  position: relative;
 }
 .ws-pane-grid {
   flex: 1;
@@ -249,14 +254,24 @@ html, body {
   display: grid;
   padding: 0;
   gap: 0;
+  opacity: 1;
+  transition: opacity 0.18s ease;
 }
-.ws-pane-grid.hidden { display: none !important; }
+.ws-pane-grid.hidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
 .ws-pane-grid .pane {
   border: none;
   border-radius: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  contain: layout style;
 }
 .ws-pane-grid .pane-header {
   flex-shrink: 0;
@@ -789,11 +804,11 @@ body.theme-forest { --bg: #0f1a14; --bg-panel: #152019; --bg-header: #1a2820; --
   flex-shrink: 0;
 }
 .ws-dot.agent-running {
-  background: #e06c75;
+  background: #4ec994;
   animation: ws-dot-pulse 1.5s ease-in-out infinite;
 }
 .ws-dot.agent-idle {
-  background: #4ec994;
+  background: #e06c75;
 }
 @keyframes ws-dot-pulse {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(224, 108, 117, 0.45); }
@@ -885,6 +900,11 @@ body.theme-forest { --bg: #0f1a14; --bg-panel: #152019; --bg-header: #1a2820; --
 }
 .tree-kind-folder::before { content: "◧"; color: #c9a227; font-size: 1rem; }
 .tree-kind-file::before { content: "◫"; color: #8b9cb3; font-size: 0.95rem; }
+.tree-kind-python::before { content: "🐍"; font-size: 0.72rem; }
+.tree-kind-md::before { content: "M↓"; color: #519aba; font-size: 0.72rem; font-weight: 600; }
+.tree-kind-config::before { content: "{}"; color: #d4a574; font-size: 0.62rem; font-weight: 700; letter-spacing: -0.05em; }
+.tree-kind-js::before { content: "JS"; color: #f1e05a; font-size: 0.58rem; font-weight: 700; }
+.tree-kind-web::before { content: "<>"; color: #e34c26; font-size: 0.62rem; font-weight: 700; }
 .tree-name {
   flex: 1;
   min-width: 0;
@@ -1261,6 +1281,7 @@ body.theme-forest { --bg: #0f1a14; --bg-panel: #152019; --bg-header: #1a2820; --
 .grid-1x1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
 .grid-2x2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
 .grid-3x2 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.grid-3x3 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; }
 
 .pane {
   display: flex;
@@ -1270,6 +1291,7 @@ body.theme-forest { --bg: #0f1a14; --bg-panel: #152019; --bg-header: #1a2820; --
   border-radius: 6px;
   min-height: 0;
   overflow: hidden;
+  contain: layout style;
 }
 
 .pane-header {
@@ -1501,6 +1523,7 @@ body.theme-forest { --bg: #0f1a14; --bg-panel: #152019; --bg-header: #1a2820; --
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 10px 12px;
   border: none;
   background: transparent;
@@ -1509,6 +1532,14 @@ body.theme-forest { --bg: #0f1a14; --bg-panel: #152019; --bg-header: #1a2820; --
   cursor: pointer;
   font-size: 0.85rem;
   text-align: left;
+}
+.settings-nav-item .nav-label { flex: 1; }
+.settings-nav-item .soon {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 0.7rem;
+  color: var(--accent);
+  opacity: 0.85;
 }
 .settings-nav-item:hover { background: rgba(126,184,255,0.08); color: var(--text); }
 .settings-nav-item.active {

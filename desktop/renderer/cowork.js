@@ -158,9 +158,9 @@ const QuillCowork = (() => {
     const personas = deps.getPersonas?.() || [];
     let html = `<option value="primary">Primary agent</option>`;
     html += `<option value="spawn">+ New planner pane</option>`;
-    panes.forEach((pid, i) => {
+    panes.forEach((pid) => {
       const persona = deps.getPanePersona?.(pid) || "Agent";
-      html += `<option value="${esc(pid)}">Pane ${i + 1}: ${esc(persona)}</option>`;
+      html += `<option value="${esc(pid)}">${esc(persona)}</option>`;
     });
     sel.innerHTML = html;
     if (!sel._delegateBound) {
@@ -173,7 +173,7 @@ const QuillCowork = (() => {
     const sel = document.getElementById("agent-delegate");
     const val = sel?.value || "primary";
     if (val === "spawn") {
-      await deps.addPane?.("Sage");
+      await deps.addPane?.();
       populateDelegateSelect();
       const panes = deps.listPanes?.() || [];
       const last = panes[panes.length - 1];

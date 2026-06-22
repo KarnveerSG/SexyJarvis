@@ -56,7 +56,7 @@ async function main() {
       activityBar: !!document.getElementById("activity-bar"),
       fileTree: !!document.getElementById("file-tree"),
       scm: !!document.getElementById("scm-files"),
-      emptyState: !!document.getElementById("empty-state"),
+      workspaceStage: !!document.getElementById("workspace-stage"),
       editorArea: !!document.getElementById("editor-area"),
       agentPanel: !!document.getElementById("agent-panel"),
       agentPanelMinimize: !!document.getElementById("agent-panel-minimize"),
@@ -70,7 +70,6 @@ async function main() {
       agentDelegate: !!document.getElementById("agent-delegate"),
       palette: !!document.getElementById("palette"),
       branchSelect: !!document.getElementById("status-branch"),
-      workspaceStage: !!document.getElementById("workspace-stage"),
       workspaceHead: !!document.getElementById("workspace-center-head"),
     }));
     for (const [k, v] of Object.entries(chrome)) {

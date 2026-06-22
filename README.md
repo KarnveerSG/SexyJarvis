@@ -45,9 +45,10 @@ LM_STUDIO_URL=http://localhost:1234/v1
 - **Workspaces** — multiple isolated projects; red dot = agent running, green = idle
 - **Explorer** — file tree with larger icons; `+` adds workspace; right-click to close/rename/open folder
 - **Source control** — git status scoped to workspace folder (monorepo-safe); staged/changes sections
-- **Terminal grid** — 1 pane full, 2 split, 3–4 in 2×2, 5–6 in 3×2; right-click pane header to split/duplicate/close
+- **Terminal grid** — up to 9 panes (3×3); 1 full, 2 split, 3–4 in 2×2; right-click pane or terminal to split/duplicate/close
 - **Agent panel** (right) — independent workspace selector; chat/composer target without switching center view
-- Named AI personas per pane (Iris, Thea, Nova, Sage, Luna, Wren)
+- Unique Greek goddess persona per pane (Hera, Artemis, Athena, Demeter, Aphrodite, Hestia, Persephone, Hecate, Nike)
+- Workspace dots: green = agent running, red = idle/stopped
 - Dark mode + **i mode** light theme; settings gear opens full settings overlay
 - Agent panes run `quill` REPL; shell panes run PowerShell
 

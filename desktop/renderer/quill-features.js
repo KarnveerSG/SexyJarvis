@@ -58,7 +58,6 @@ const QuillFeatures = (() => {
     await deps.ensureMonaco();
     const ed = deps.getEditor();
     if (!ed) return;
-    document.getElementById("empty-state")?.classList.add("hidden");
     document.getElementById("editor-area")?.classList.remove("hidden");
     ed.setModel(monaco.editor.createModel(tab.content, deps.guessLang(filePath)));
     deps.setDirty(tab.dirty);
