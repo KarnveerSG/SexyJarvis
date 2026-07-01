@@ -248,6 +248,30 @@ const QuillMultiAgent = (() => {
     renderTaskBoard();
   }
 
+  const recentNotifyKeys = new Set();
+  function notifyBackgroundDone(ws, title) {
+    try {
+      const state = deps?.getState?.();
+      if (!state || !ws) return;
+      if (state.activeWorkspace === ws.id) return;
+      const key = `${ws.id}:${title}`;
+      if (recentNotifyKeys.has(key)) return;
+      recentNotifyKeys.add(key);
+      setTimeout(() => recentNotifyKeys.delete(key), 30_000);
+      window.QuillModules?.util?.showToast?.(`${ws.name} finished: ${title}`);
+      const prefs = state.notifications || {};
+      if (prefs.osNotifications !== false && "Notification" in window) {
+        try {
+          if (Notification.permission === "granted") {
+            new Notification(`Quill — ${ws.name}`, { body: `Task complete: ${title}`, silent: true });
+          } else if (Notification.permission !== "denied") {
+            Notification.requestPermission();
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
   async function ingestTaskMarkers(clean, wsId) {
     const ws = deps?.getState?.()?.workspaces?.find((w) => w.id === wsId);
     const cwd = ws?.cwd;
@@ -279,6 +303,7 @@ const QuillMultiAgent = (() => {
         t.status = "done";
         t.doneAt = Date.now();
         changed = true;
+        notifyBackgroundDone(ws, t.title || id);
       }
     }
 
