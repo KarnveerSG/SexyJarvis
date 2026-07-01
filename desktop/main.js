@@ -1044,6 +1044,20 @@ ipcMain.handle("search-files", (_e, { cwd, query, limit }) => {
   return { ok: true, files: results.slice(0, max) };
 });
 
+function promptsPath() { return path.join(os.homedir(), ".quill", "prompts.json"); }
+ipcMain.handle("get-prompts", () => {
+  const f = promptsPath();
+  if (!fs.existsSync(f)) return { ok: true, prompts: [] };
+  try { return { ok: true, prompts: JSON.parse(fs.readFileSync(f, "utf8")) || [] }; }
+  catch { return { ok: true, prompts: [] }; }
+});
+ipcMain.handle("save-prompts", (_e, prompts) => {
+  const f = promptsPath();
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, JSON.stringify(prompts || [], null, 2) + "\n", "utf8");
+  return { ok: true };
+});
+
 ipcMain.handle("stat-path", (_e, p) => {
   try {
     const st = fs.statSync(path.resolve(p));

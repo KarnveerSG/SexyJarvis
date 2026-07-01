@@ -195,6 +195,7 @@
         <div class="agent-toolbar">
           <select id="agent-delegate" class="agent-pill-select" title="Send to pane"></select>
           <div class="agent-toolbar-actions">
+            <button type="button" class="agent-icon-btn" id="prompt-library-btn" title="Prompt library">☰</button>
             <button type="button" class="agent-icon-btn" data-action="focus-terminal" title="Focus terminal">▭</button>
             <button type="button" class="agent-icon-btn" data-action="toggle-browser" title="Browser">⌁</button>
           </div>
@@ -219,6 +220,13 @@
   <div id="palette" class="palette hidden">
     <input id="palette-input" type="text" placeholder="> commands  @ files  # workspaces  :line" autocomplete="off" />
     <ul id="palette-list"></ul>
+  </div>
+
+  <div id="prompts-modal" class="global-search hidden">
+    <div class="global-search-panel">
+      <header><span>Prompt library</span><button type="button" id="prompts-modal-close">×</button></header>
+      <div id="prompts-modal-body" class="spend-modal-body"></div>
+    </div>
   </div>
 
   <div id="spend-modal" class="global-search hidden">

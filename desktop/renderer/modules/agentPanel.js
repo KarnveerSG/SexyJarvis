@@ -265,6 +265,82 @@ window.QuillModules = window.QuillModules || {};
     };
   }
 
+  let promptsCache = null;
+  async function loadPrompts() {
+    if (promptsCache) return promptsCache;
+    try {
+      const res = await window.quill.getPrompts?.();
+      promptsCache = Array.isArray(res?.prompts) ? res.prompts : [];
+    } catch { promptsCache = []; }
+    return promptsCache;
+  }
+  async function savePrompts(list) {
+    promptsCache = list;
+    try { await window.quill.savePrompts?.(list); } catch (_) {}
+  }
+  async function openPromptLibrary() {
+    const modal = document.getElementById("prompts-modal");
+    const body = document.getElementById("prompts-modal-body");
+    if (!modal || !body) return;
+    const prompts = await loadPrompts();
+    const input = document.getElementById("agent-composer-input");
+    const rows = prompts.length ? prompts.map((p, i) => `
+      <div class="skill-row" style="align-items:flex-start;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div><strong>${escHtml(p.title || "(untitled)")}</strong></div>
+          <div class="settings-sub" style="white-space:pre-wrap">${escHtml(p.body || "")}</div>
+        </div>
+        <button type="button" class="btn-secondary" data-prompt-insert="${i}">Insert</button>
+        <button type="button" class="btn-secondary" data-prompt-delete="${i}">Delete</button>
+      </div>`).join("") : `<p class="settings-sub">No prompts saved yet.</p>`;
+    body.innerHTML = `
+      <div style="margin-bottom:12px">
+        <input type="text" id="prompt-new-title" placeholder="Title" style="width:100%;padding:6px;margin-bottom:6px" />
+        <textarea id="prompt-new-body" placeholder="Prompt body — use {{selection}} or {{file}} placeholders" rows="3" style="width:100%;padding:6px"></textarea>
+        <button type="button" class="btn-primary" id="prompt-save-btn" style="margin-top:6px">Save prompt</button>
+      </div>
+      <div>${rows}</div>`;
+    modal.classList.remove("hidden");
+    document.getElementById("prompt-save-btn").onclick = async () => {
+      const title = document.getElementById("prompt-new-title").value.trim();
+      const bodyText = document.getElementById("prompt-new-body").value.trim();
+      if (!title || !bodyText) return;
+      const list = [...await loadPrompts(), { title, body: bodyText }];
+      await savePrompts(list);
+      openPromptLibrary();
+    };
+    body.querySelectorAll("[data-prompt-insert]").forEach((btn) => {
+      btn.onclick = async () => {
+        const i = Number(btn.dataset.promptInsert);
+        const list = await loadPrompts();
+        const p = list[i];
+        if (!p || !input) return;
+        const ws = window.QuillModules.workspaces.agentPanelWs();
+        const filePath = S().editorFilePath ? S().editorFilePath.replace(ws?.cwd || "", "").replace(/^[/\\]+/, "") : "";
+        const body = String(p.body || "").replace(/\{\{file\}\}/g, filePath || "(no file)");
+        input.value = (input.value ? input.value + "\n" : "") + body;
+        input.focus();
+        modal.classList.add("hidden");
+      };
+    });
+    body.querySelectorAll("[data-prompt-delete]").forEach((btn) => {
+      btn.onclick = async () => {
+        const i = Number(btn.dataset.promptDelete);
+        const list = await loadPrompts();
+        list.splice(i, 1);
+        await savePrompts(list);
+        openPromptLibrary();
+      };
+    });
+  }
+  function bindPromptLibrary() {
+    document.getElementById("prompt-library-btn")?.addEventListener("click", openPromptLibrary);
+    document.getElementById("prompts-modal-close")?.addEventListener("click", () => document.getElementById("prompts-modal")?.classList.add("hidden"));
+    document.getElementById("prompts-modal")?.addEventListener("click", (e) => {
+      if (e.target?.id === "prompts-modal") e.currentTarget.classList.add("hidden");
+    });
+  }
+
   function renderAgentPanelWorkspaceSelect() {
     const sel = document.getElementById("agent-ws-select");
     if (!sel) return;
@@ -308,6 +384,7 @@ window.QuillModules = window.QuillModules || {};
     getAgentDelegatePaneId,
     populateAgentPersona,
     bindGlobalComposer,
+    bindPromptLibrary,
     renderAgentPanelWorkspaceSelect,
     bindAgentPanelWorkspaceSelect,
   };

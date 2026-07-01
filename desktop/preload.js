@@ -52,4 +52,6 @@ contextBridge.exposeInMainWorld("quill", {
     catch { return file?.path || ""; }
   },
   statPath: (p) => ipcRenderer.invoke("stat-path", p),
+  getPrompts: () => ipcRenderer.invoke("get-prompts"),
+  savePrompts: (prompts) => ipcRenderer.invoke("save-prompts", prompts),
 });
