@@ -168,6 +168,11 @@ html, body {
 .ws-branch-badge { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 .ws-branch-badge:hover { color: var(--accent); }
 
+.editor-split-row { display: flex; flex: 1; min-height: 0; }
+.editor-split-row > .editor-monaco { flex: 1; min-width: 0; }
+.editor-split-row > .editor-right { border-left: 1px solid var(--border); }
+.editor-split-row > .editor-right.hidden { display: none; }
+
 .side-panel {
   width: var(--side-width);
   flex-shrink: 0;

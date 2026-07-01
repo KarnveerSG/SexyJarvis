@@ -456,9 +456,36 @@ const QuillFeatures = (() => {
     }
   }
 
+  let rightEditor = null;
   function bindSplitEditor() {
-    document.getElementById("editor-split")?.addEventListener("click", () => {
-      deps.showToast("Split editor: drag tabs (coming in next release)");
+    document.getElementById("editor-split")?.addEventListener("click", async () => {
+      const rightEl = document.getElementById("monaco-editor-right");
+      if (!rightEl) return;
+      await deps.ensureMonaco();
+      if (!window.monaco?.editor) return;
+      const isOpen = !rightEl.classList.contains("hidden");
+      if (isOpen) {
+        rightEl.classList.add("hidden");
+        rightEditor?.dispose?.();
+        rightEditor = null;
+        deps.getEditor()?.layout?.();
+        return;
+      }
+      const filePath = deps.getEditorPath?.();
+      const left = deps.getEditor();
+      if (!filePath || !left) { deps.showToast("Open a file first"); return; }
+      rightEl.classList.remove("hidden");
+      rightEditor = monaco.editor.create(rightEl, {
+        theme: left._themeService?._theme?.id || "vs-dark",
+        automaticLayout: true,
+        readOnly: false,
+        fontSize: 13,
+        fontFamily: "Cascadia Code, Consolas, monospace",
+        minimap: { enabled: false },
+      });
+      rightEditor.setModel(monaco.editor.createModel(left.getValue(), deps.guessLang(filePath)));
+      left.layout();
+      deps.showToast("Split view — right pane is a scratch copy");
     });
   }
 

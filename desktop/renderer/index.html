@@ -143,7 +143,10 @@
             <button type="button" class="editor-tab-btn" id="editor-close" title="Close">×</button>
           </div>
         </div>
-        <div id="monaco-editor" class="editor-monaco"></div>
+        <div class="editor-split-row" id="editor-split-row">
+          <div id="monaco-editor" class="editor-monaco"></div>
+          <div id="monaco-editor-right" class="editor-monaco editor-right hidden"></div>
+        </div>
         <div id="monaco-diff" class="editor-monaco hidden"></div>
       </div>
       <div id="browser-panel" class="browser-panel hidden">
