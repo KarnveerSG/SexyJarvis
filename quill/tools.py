@@ -433,6 +433,11 @@ class ToolRunner:
     def undo_last(self) -> tuple[bool, str]:
         if not self._undo_stack:
             return False, "Nothing to undo."
+        # Skip any turn sentinels at the top.
+        while self._undo_stack and self._undo_stack[-1][0] is None:
+            self._undo_stack.pop()
+        if not self._undo_stack:
+            return False, "Nothing to undo."
         path, prior = self._undo_stack.pop()
         current = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else None
         self._redo_stack.append((path, current))
@@ -445,6 +450,46 @@ class ToolRunner:
             return True, f"Reverted last change to {path}."
         except Exception as exc:
             return False, f"Undo failed: {exc}"
+
+    def mark_turn(self) -> None:
+        """Insert a sentinel so undo_turn() can revert an entire turn."""
+        # None-path entries are turn boundaries.
+        self._undo_stack.append((None, None))
+        if len(self._undo_stack) > self._undo_limit:
+            self._undo_stack.pop(0)
+
+    def undo_turn(self) -> tuple[bool, str, int]:
+        """Revert every edit above the most recent turn sentinel.
+
+        Returns (ok, message, files_reverted).
+        """
+        # Drop any trailing sentinels first (empty turn at top).
+        while self._undo_stack and self._undo_stack[-1][0] is None:
+            self._undo_stack.pop()
+        if not self._undo_stack:
+            return False, "Nothing to undo.", 0
+        reverted = 0
+        errors: list[str] = []
+        while self._undo_stack:
+            path, prior = self._undo_stack[-1]
+            if path is None:
+                self._undo_stack.pop()
+                break
+            self._undo_stack.pop()
+            current = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else None
+            self._redo_stack.append((path, current))
+            try:
+                if prior is None:
+                    if path.is_file():
+                        path.unlink()
+                else:
+                    path.write_text(prior, encoding="utf-8")
+                reverted += 1
+            except Exception as exc:
+                errors.append(f"{path}: {exc}")
+        if errors:
+            return False, "Undo turn had errors: " + "; ".join(errors), reverted
+        return True, f"Reverted {reverted} file change(s) from the last turn.", reverted
 
     def redo_last(self) -> tuple[bool, str]:
         if not self._redo_stack:

@@ -621,10 +621,33 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None,
                         ui.info(f"Reloaded instructions: {', '.join(p.name for p in loaded)}")
                     continue
                 if cmd == "undo":
-                    result = agent.runner.run("undo_last", {})
-                    (ui.error if result.is_error else ui.info)(result.content)
-                    if result.diff:
-                        ui.show_diff(result.diff)
+                    scope = rest.strip().lower()
+                    if scope in ("", "turn"):
+                        ok, msg, count = agent.runner.undo_turn()
+                        (ui.info if ok else ui.error)(msg)
+                        if ok and count:
+                            # Pop the most recent user message and its assistant reply(ies).
+                            msgs = session.messages
+                            popped_user = 0
+                            popped_asst = 0
+                            while msgs and msgs[-1].get("role") == "assistant":
+                                msgs.pop()
+                                popped_asst += 1
+                            if msgs and msgs[-1].get("role") == "user":
+                                msgs.pop()
+                                popped_user += 1
+                            if popped_user or popped_asst:
+                                ui.info(
+                                    f"Rolled back conversation: -{popped_user} user, -{popped_asst} assistant message(s)."
+                                )
+                        continue
+                    if scope == "file":
+                        result = agent.runner.run("undo_last", {})
+                        (ui.error if result.is_error else ui.info)(result.content)
+                        if result.diff:
+                            ui.show_diff(result.diff)
+                        continue
+                    ui.error("Usage: /undo [turn|file]. Default is turn.")
                     continue
                 if cmd == "plan":
                     if rest in ("on", "true", "1", "yes"):
@@ -892,6 +915,10 @@ def run_repl(cfg, no_memory: bool, ui: UI, initial_task: str | None, voice=None,
 
             try:
                 session.turns += 1
+                try:
+                    agent.runner.mark_turn()
+                except Exception:
+                    pass
                 agent.run_turn(user_input)
                 # Autosave session after each turn.
                 try:
