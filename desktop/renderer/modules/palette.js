@@ -6,6 +6,16 @@ window.QuillModules = window.QuillModules || {};
   const { escHtml } = window.QuillModules.util;
 
   let lastComposerText = "";
+  let cachedPrompts = null;
+  async function ensurePromptsCache() {
+    if (cachedPrompts) return cachedPrompts;
+    try {
+      const res = await window.quill.getPrompts?.();
+      cachedPrompts = Array.isArray(res?.prompts) ? res.prompts : [];
+    } catch { cachedPrompts = []; }
+    return cachedPrompts;
+  }
+  function invalidatePromptsCache() { cachedPrompts = null; }
 
   function setLastComposerText(text) {
     lastComposerText = text;
@@ -69,6 +79,21 @@ window.QuillModules = window.QuillModules || {};
         run: () => window.QuillModules.workspaces.switchWorkspace(w.id),
       });
     });
+    (cachedPrompts || []).forEach((p, i) => {
+      cmds.push({
+        id: `prompt-${i}`,
+        label: `> Insert prompt: ${p.title || "(untitled)"}`,
+        run: () => {
+          const input = document.getElementById("agent-composer-input");
+          if (!input) return;
+          const ws = window.QuillModules.workspaces.agentPanelWs();
+          const filePath = S().editorFilePath ? S().editorFilePath.replace(ws?.cwd || "", "").replace(/^[/\\]+/, "") : "";
+          const body = String(p.body || "").replace(/\{\{file\}\}/g, filePath || "(no file)");
+          input.value = (input.value ? input.value + "\n" : "") + body;
+          input.focus();
+        },
+      });
+    });
     return cmds;
   }
 
@@ -77,6 +102,7 @@ window.QuillModules = window.QuillModules || {};
     const input = document.getElementById("palette-input");
     input.value = "";
     input.focus();
+    void ensurePromptsCache().then(() => renderPalette(input.value));
     renderPalette("");
     input.oninput = () => {
       clearTimeout(S().paletteSearchTimer);
@@ -187,5 +213,6 @@ window.QuillModules = window.QuillModules || {};
     closePalette,
     renderPalette,
     setLastComposerText,
+    invalidatePromptsCache,
   };
 })();

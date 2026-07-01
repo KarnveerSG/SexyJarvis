@@ -335,6 +335,7 @@ window.QuillModules = window.QuillModules || {};
   async function savePrompts(list) {
     promptsCache = list;
     try { await window.quill.savePrompts?.(list); } catch (_) {}
+    window.QuillModules.palette?.invalidatePromptsCache?.();
   }
   async function openPromptLibrary() {
     const modal = document.getElementById("prompts-modal");
