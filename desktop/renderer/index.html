@@ -162,6 +162,7 @@
         <span id="status-file"></span>
         <select id="status-provider" class="status-provider" title="LLM provider"></select>
         <span id="status-local-llm" class="status-local-llm" title="Local LLM"></span>
+        <span id="status-spend" class="status-spend hidden" title="Session spend — click for breakdown"></span>
         <span class="status-right" id="status-path"></span>
       </footer>
     </main>
@@ -214,6 +215,13 @@
   <div id="palette" class="palette hidden">
     <input id="palette-input" type="text" placeholder="> commands  @ files  # workspaces  :line" autocomplete="off" />
     <ul id="palette-list"></ul>
+  </div>
+
+  <div id="spend-modal" class="global-search hidden">
+    <div class="global-search-panel">
+      <header><span>Session spend</span><button type="button" id="spend-modal-close">×</button></header>
+      <div id="spend-modal-body" class="spend-modal-body"></div>
+    </div>
   </div>
 
   <div id="global-search" class="global-search hidden">

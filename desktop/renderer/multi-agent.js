@@ -4,6 +4,74 @@ const QuillMultiAgent = (() => {
   let deps = null;
   const tasksByCwd = new Map();
   let agentsMenuEl = null;
+  const spendByWs = new Map();
+
+  const PRICE_PER_MTOK = {
+    anthropic: { in: 3.0, out: 15.0 },
+    cursor: { in: 3.0, out: 15.0 },
+    local: { in: 0, out: 0 },
+    auto: { in: 3.0, out: 15.0 },
+  };
+
+  function activeProvider() {
+    return (deps?.getBootstrap?.()?.activeProvider || "auto").toLowerCase();
+  }
+
+  function estimateUsd(inTok, outTok, provider = activeProvider()) {
+    const p = PRICE_PER_MTOK[provider] || PRICE_PER_MTOK.auto;
+    return ((inTok * p.in) + (outTok * p.out)) / 1_000_000;
+  }
+
+  function fmtUsd(n) { return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`; }
+  function fmtTok(n) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n); }
+
+  function ensureSpend(wsId) {
+    if (!wsId) return null;
+    if (!spendByWs.has(wsId)) spendByWs.set(wsId, { in: 0, out: 0, turns: 0, provider: activeProvider() });
+    return spendByWs.get(wsId);
+  }
+
+  function updateSpendChip() {
+    const wsId = deps?.activeWs?.()?.id;
+    const chip = document.getElementById("status-spend");
+    if (!chip) return;
+    const s = wsId ? spendByWs.get(wsId) : null;
+    if (!s || (!s.in && !s.out)) { chip.classList.add("hidden"); return; }
+    const usd = estimateUsd(s.in, s.out, s.provider);
+    chip.textContent = `${fmtUsd(usd)} · ${fmtTok(s.in + s.out)} tok`;
+    chip.title = `In: ${s.in.toLocaleString()} / Out: ${s.out.toLocaleString()} across ${s.turns} turn(s)\nProvider: ${s.provider}`;
+    chip.classList.remove("hidden");
+  }
+
+  function openSpendModal() {
+    const modal = document.getElementById("spend-modal");
+    const body = document.getElementById("spend-modal-body");
+    if (!modal || !body) return;
+    const state = deps?.getState?.() || { workspaces: [] };
+    const rows = (state.workspaces || []).map((ws) => {
+      const s = spendByWs.get(ws.id) || { in: 0, out: 0, turns: 0, provider: activeProvider() };
+      const usd = estimateUsd(s.in, s.out, s.provider);
+      return `<tr><td>${esc(ws.name)}</td><td>${esc(s.provider)}</td><td class="num">${s.in.toLocaleString()}</td><td class="num">${s.out.toLocaleString()}</td><td class="num">${s.turns}</td><td class="num">${fmtUsd(usd)}</td></tr>`;
+    }).join("");
+    const totals = [...spendByWs.values()].reduce((a, s) => ({ in: a.in + s.in, out: a.out + s.out, turns: a.turns + s.turns }), { in: 0, out: 0, turns: 0 });
+    const totalUsd = estimateUsd(totals.in, totals.out);
+    body.innerHTML = `
+      <table>
+        <thead><tr><th>Workspace</th><th>Provider</th><th>In</th><th>Out</th><th>Turns</th><th>Est. cost</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="6">No spend yet this session.</td></tr>`}</tbody>
+        <tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>${totals.in.toLocaleString()}</strong></td><td class="num"><strong>${totals.out.toLocaleString()}</strong></td><td class="num"><strong>${totals.turns}</strong></td><td class="num"><strong>${fmtUsd(totalUsd)}</strong></td></tr></tfoot>
+      </table>
+      <p style="margin-top:12px;color:var(--text-dim);font-size:11px">Estimates use approximate $3/M input, $15/M output. Local LLM = $0.</p>`;
+    modal.classList.remove("hidden");
+  }
+
+  function bindSpendChip() {
+    document.getElementById("status-spend")?.addEventListener("click", openSpendModal);
+    document.getElementById("spend-modal-close")?.addEventListener("click", () => document.getElementById("spend-modal")?.classList.add("hidden"));
+    document.getElementById("spend-modal")?.addEventListener("click", (e) => {
+      if (e.target?.id === "spend-modal") e.currentTarget.classList.add("hidden");
+    });
+  }
 
   const TOOL_STATUS = {
     write_file: "editing",
@@ -75,9 +143,20 @@ const QuillMultiAgent = (() => {
 
     const tokM = clean.match(/↳ turn used ([\d,]+) in \/ ([\d,]+) out tokens/);
     if (tokM) {
-      inst.tokens.in = parseInt(tokM[1].replace(/,/g, ""), 10) || inst.tokens.in;
-      inst.tokens.out = parseInt(tokM[2].replace(/,/g, ""), 10) || inst.tokens.out;
+      const inTok = parseInt(tokM[1].replace(/,/g, ""), 10) || 0;
+      const outTok = parseInt(tokM[2].replace(/,/g, ""), 10) || 0;
+      inst.tokens.in = inTok || inst.tokens.in;
+      inst.tokens.out = outTok || inst.tokens.out;
       inst.lastUpdate = Date.now();
+      const wsId = inst.wsId || deps?.activeWs?.()?.id;
+      if (wsId && (inTok || outTok)) {
+        const s = ensureSpend(wsId);
+        s.in += inTok;
+        s.out += outTok;
+        s.turns += 1;
+        s.provider = activeProvider();
+        updateSpendChip();
+      }
     }
 
     const errM = /\b(error|failed|is_error)\b/i.test(clean) && /\[QUILL_TOOL:/.test(clean);
@@ -297,13 +376,16 @@ const QuillMultiAgent = (() => {
     updateAgentsTrayBadge();
     renderTaskBoard();
     tasksByCwd.clear();
+    updateSpendChip();
   }
 
   function init(hooks) {
     deps = hooks;
     bindAgentsTray();
     bindProviderSwitcher();
+    bindSpendChip();
     updateAgentsTrayBadge();
+    updateSpendChip();
     renderTaskBoard();
   }
 
