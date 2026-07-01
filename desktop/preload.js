@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("quill", {
   getBootstrap: () => ipcRenderer.invoke("get-bootstrap"),
@@ -47,4 +47,9 @@ contextBridge.exposeInMainWorld("quill", {
   setProvider: (provider) => ipcRenderer.invoke("set-provider", provider),
   getTasks: (cwd) => ipcRenderer.invoke("get-tasks", cwd),
   saveTasks: (opts) => ipcRenderer.invoke("save-tasks", opts),
+  getDroppedPath: (file) => {
+    try { return webUtils?.getPathForFile?.(file) || file?.path || ""; }
+    catch { return file?.path || ""; }
+  },
+  statPath: (p) => ipcRenderer.invoke("stat-path", p),
 });

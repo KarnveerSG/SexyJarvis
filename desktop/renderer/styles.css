@@ -149,6 +149,8 @@ html, body {
 }
 .panel-gutter:hover, .panel-gutter.dragging { background: var(--accent); }
 
+.drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; background: rgba(55, 148, 255, 0.05); }
+
 .side-panel {
   width: var(--side-width);
   flex-shrink: 0;

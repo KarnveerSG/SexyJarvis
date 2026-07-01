@@ -254,6 +254,7 @@ window.QuillApp = window.QuillApp || {};
     M.scm.bindScm();
     bindActivityBar();
     bindPanelGutters();
+    M.workspaces.bindWorkspaceDrop();
     bindSideSearch();
     M.agentPanel.setAgentPanelMode(S().state.agentPanelMode || "open", { persist: false });
     void M.editor.ensureMonaco();

@@ -441,6 +441,48 @@ window.QuillModules = window.QuillModules || {};
     showToast(`Workspace folder: ${ws.name}`);
   }
 
+  async function addWorkspaceFromPath(folderPath) {
+    if (!folderPath) return;
+    const stat = await window.quill.statPath?.(folderPath);
+    if (stat && !stat.isDirectory) {
+      showToast("Drop a folder, not a file");
+      return;
+    }
+    const i = S().state.workspaces.length;
+    const id = `ws-${Date.now()}`;
+    const paneId = `pane-${id}-0`;
+    const name = folderPath.split(/[/\\]/).filter(Boolean).pop() || "Workspace";
+    S().state.workspaces.push({
+      id, name, color: S().bootstrap.rainbow[i % S().bootstrap.rainbow.length],
+      cwd: folderPath, folders: [folderPath], panes: 1, layout: "grid-1x1",
+      paneIds: [paneId], named: true, openFiles: [],
+    });
+    S().state.panes[paneId] = { persona: pickUnusedPersonaFromUsed(new Set()), mode: "agent" };
+    persist();
+    await switchWorkspace(id);
+    showToast(`Added workspace: ${name}`);
+  }
+
+  function bindWorkspaceDrop() {
+    const targets = [document.getElementById("workspace-list"), document.getElementById("file-tree")].filter(Boolean);
+    for (const el of targets) {
+      el.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        el.classList.add("drop-target");
+      });
+      el.addEventListener("dragleave", () => el.classList.remove("drop-target"));
+      el.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        el.classList.remove("drop-target");
+        const files = Array.from(e.dataTransfer?.files || []);
+        for (const f of files) {
+          const p = window.quill.getDroppedPath?.(f) || f.path;
+          if (p) await addWorkspaceFromPath(p);
+        }
+      });
+    }
+  }
+
   function addWorkspace() {
     const i = S().state.workspaces.length;
     const id = `ws-${Date.now()}`;
@@ -505,6 +547,8 @@ window.QuillModules = window.QuillModules || {};
     renameWorkspace,
     openFolderForWorkspace,
     addWorkspace,
+    addWorkspaceFromPath,
+    bindWorkspaceDrop,
     exportWorkspaceSync,
     importWorkspaceSync,
   };

@@ -1039,6 +1039,15 @@ ipcMain.handle("search-files", (_e, { cwd, query, limit }) => {
   return { ok: true, files: results.slice(0, max) };
 });
 
+ipcMain.handle("stat-path", (_e, p) => {
+  try {
+    const st = fs.statSync(path.resolve(p));
+    return { ok: true, isDirectory: st.isDirectory(), isFile: st.isFile() };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+});
+
 ipcMain.handle("test-mcp-server", async (_e, spec) => {
   const command = (spec?.command || "").trim();
   if (!command) return { ok: false, error: "Command required." };
