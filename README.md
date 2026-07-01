@@ -171,6 +171,19 @@ Living inventory of everything Quill can do. Updated per release.
 - **Background completion notifications** — toast and (opt-in) OS notification on `[QUILL:TASK_DONE]` from a non-active workspace
 - **Prompt library** — save composer prompts to `~/.quill/prompts.json`, quick-insert into the composer with `{{file}}` placeholder expansion
 
+### Conversation & prompts
+- **History browser** — save current chat as a snapshot to `~/.quill/history/<wsId>/`, restore or delete past snapshots
+- **Prompt library** — quick-insert with `{{file}}` placeholder; saved prompts also appear as `>` entries in the command palette
+
+### Editor split view
+- Toggle the `⧉` button to open a side-by-side second Monaco pane (scratch copy) — useful for viewing two regions of the same file
+
+### Recent workspaces
+- File menu → **Reopen Recent…** — modal with the last 8 opened folders
+
+### Workspace rules
+- Workspace header **Rules** button opens `.quill/rules.md` editor; agent picks it up on next turn
+
 ### Embedded browser (Cowork)
 - Back / forward / reload / DevTools controls
 - URL bar (Enter to navigate; bare text falls back to Google search)
