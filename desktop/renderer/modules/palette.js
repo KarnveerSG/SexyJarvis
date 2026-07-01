@@ -28,6 +28,28 @@ window.QuillModules = window.QuillModules || {};
         const next = opts[(idx + 1) % opts.length];
         if (next) { sel.value = next.value; sel.dispatchEvent(new Event("change")); }
       }},
+      { id: "undo-turn", label: "> Undo last agent turn (revert edits)", run: async () => {
+        const feat = window.QuillFeatures;
+        const pending = feat?.getPendingEdits?.();
+        const paths = pending ? [...pending.keys()] : [];
+        const ws = window.QuillModules.workspaces.activeWs();
+        if (!ws?.cwd) return;
+        if (!paths.length) {
+          window.QuillModules.util.showToast("No pending agent edits to undo");
+          return;
+        }
+        if (!confirm(`Revert ${paths.length} file${paths.length > 1 ? "s" : ""} to git HEAD?`)) return;
+        for (const p of paths) {
+          try { await window.quill.gitRevertFile({ cwd: ws.cwd, filePath: p }); } catch (_) {}
+        }
+        // signal CLI too, in case it implements /undo later
+        const pid = ws.paneIds?.[0];
+        const t = pid ? S().termInstances.get(pid) : null;
+        if (t?.ptyId) window.quill.ptyWrite(t.ptyId, "/undo\r");
+        feat?.clearPendingEdits?.();
+        await window.QuillModules.workspaces.refreshGitInfo();
+        window.QuillModules.util.showToast(`Reverted ${paths.length} file(s)`);
+      }},
       { id: "run-last", label: "> Run last task", run: () => {
         if (!lastComposerText) return;
         const input = document.getElementById("agent-composer-input");

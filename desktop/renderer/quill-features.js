@@ -608,6 +608,7 @@ const QuillFeatures = (() => {
     showInlineDiffBar,
     enqueueAgentEdit,
     getPendingEdits: () => new Map(pendingEdits),
+    clearPendingEdits: () => { pendingEdits.clear(); renderBatchReview(); },
   };
 })();
 
