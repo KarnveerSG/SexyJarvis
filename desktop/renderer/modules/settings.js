@@ -70,6 +70,34 @@ window.QuillModules = window.QuillModules || {};
       return;
     }
 
+    if (S().settingsSection === "notifications") {
+      const prefs = S().state.notifications || {};
+      const osOn = prefs.osNotifications !== false;
+      const toastOn = prefs.toasts !== false;
+      el.innerHTML = `<div class="settings-page"><h3>Notifications</h3>
+        <p class="settings-sub">How Quill alerts you when a background workspace task completes.</p>
+        <label class="field-row"><span>In-app toast</span><input type="checkbox" id="notif-toast"${toastOn ? " checked" : ""} /></label>
+        <label class="field-row"><span>OS notification</span><input type="checkbox" id="notif-os"${osOn ? " checked" : ""} /></label>
+        <p class="settings-sub" id="notif-status"></p></div>`;
+      const save = () => {
+        S().state.notifications = {
+          toasts: document.getElementById("notif-toast").checked,
+          osNotifications: document.getElementById("notif-os").checked,
+        };
+        window.QuillModules.workspaces.persist();
+        const st = document.getElementById("notif-status");
+        if (st) st.textContent = "Saved.";
+      };
+      document.getElementById("notif-toast").onchange = save;
+      document.getElementById("notif-os").onchange = () => {
+        save();
+        if (document.getElementById("notif-os").checked && "Notification" in window && Notification.permission === "default") {
+          Notification.requestPermission();
+        }
+      };
+      return;
+    }
+
     if (S().settingsSection === "appearance") {
       const opts = Object.entries(S().bootstrap.themes || {}).map(([id, t]) =>
         `<option value="${id}"${S().state.theme === id ? " selected" : ""}>${t.label}</option>`

@@ -258,8 +258,10 @@ const QuillMultiAgent = (() => {
       if (recentNotifyKeys.has(key)) return;
       recentNotifyKeys.add(key);
       setTimeout(() => recentNotifyKeys.delete(key), 30_000);
-      window.QuillModules?.util?.showToast?.(`${ws.name} finished: ${title}`);
       const prefs = state.notifications || {};
+      if (prefs.toasts !== false) {
+        window.QuillModules?.util?.showToast?.(`${ws.name} finished: ${title}`);
+      }
       if (prefs.osNotifications !== false && "Notification" in window) {
         try {
           if (Notification.permission === "granted") {
