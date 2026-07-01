@@ -80,6 +80,94 @@ Status bar provider dropdown switches `QUILL_PROVIDER` and persists to `~/.quill
 ### Stability
 - PTY shutdown race fixed; graceful quit kills all terminals and closes GPU/network connections
 
+## Capabilities
+
+Living inventory of everything Quill can do. Updated per release.
+
+### Shell / Layout
+- Electron desktop app + Python `quill` CLI
+- Menubar (File / Edit / View / Help), custom titlebar
+- Activity bar: Explorer · SCM · Search · Agent · Running-agents tray · Task board · Settings
+- Command palette (Ctrl+P): `>` commands, `@` symbols/files, `#` workspaces, `:` goto-line, plain fuzzy
+- Dark theme + light "i mode"
+- **Drag-resize** sidebar and agent panels (double-click gutter to reset; widths persisted)
+
+### Workspaces
+- Multi-workspace, concurrent, agents persist across switches
+- Workspace list with dot indicator (green=running, red=idle)
+- Add / open / rename / close workspaces
+- Sync export / import
+- Explorer file tree, folder roots
+- **Drag-and-drop** an OS folder onto the sidebar → new workspace
+- **Session restore**: open editor tabs restored per workspace on relaunch and switch
+
+### Editor
+- Monaco editor with tabs, dirty indicator
+- Inline diff view (Edit / Diff tabs)
+- Save (Ctrl+S)
+- Symbol/goto-line via command palette
+- LSP provider hooks
+- Git gutter decorations
+- Multi-file **batch review queue**: every agent-edited file collects in a bar with `Apply all` / `Revert all`; per-file Keep / Revert on the inline diff bar
+
+### Terminals (multi-pane grid)
+- Up to 9 xterm panes; layouts 1 / 2 split / 2×2 / 3×3
+- Unique Greek-goddess persona per pane
+- Per-pane status pill (idle / thinking / editing / waiting / error) from `[QUILL_TOOL:…]`
+- Per-pane composer with `@file` mentions
+- `/handoff <persona>` between panes; "Send to pane" delegate
+- Split gutter resize; PTYs survive workspace switches; graceful shutdown
+
+### Agent Panel
+- Chat + composer, independent workspace selector
+- `@file` mention picker in global composer
+- Structured event stream
+- Toggle (Ctrl+L), minimize / expand / hide
+
+### Agent Engine (CLI)
+- Provider chain: Cursor → Claude API → local LLM (LM Studio / Ollama)
+- Provider dropdown in statusbar
+- Local LLM auto-detect (LM Studio :1234, Ollama :11434)
+- Tools: read/write/edit/apply_patch, bash jobs, external tools
+- MCP client backend (per-workspace `.quill/mcp.json`)
+- CodeGraph tools when `.codegraph/` present
+- Caveman-ultra terse output, RTK compact shell output
+- Personas, memory, hooks, telemetry, ignore rules, session, watcher
+- `--yolo` skip-confirmations
+
+### Cost & Telemetry
+- **Statusbar spend chip** — `$X.XX · Nk tok` per active workspace, updates on every `↳ turn used …` marker
+- **Breakdown modal** — click chip → per-workspace table (in / out / turns / est. cost) with grand total
+- Rough pricing: $3/M in, $15/M out (Claude/Cursor); local = $0
+
+### Source Control
+- Git status scoped to workspace root (monorepo-safe)
+- Stage all / commit from side panel
+- Statusbar branch dropdown
+- **Per-workspace branch switcher** — click the branch badge on any workspace row for a checkout menu
+- SCM badge count
+
+### Search
+- Fuzzy filename search in side panel
+- **Content search** across workspace (Ctrl+Shift+F) via `git grep` with recursive JS fallback
+- Click a result → opens file at line
+
+### Task Board
+- `.quill/tasks.json` per workspace
+- Auto tasks from `[QUILL:TASK_START] / [QUILL:TASK_DONE]` markers
+- Running-agents tray (◎) with count badge, click-to-jump
+
+### Settings
+- Appearance (dark / light)
+- MCP server add form (per-workspace)
+- Keybinding overrides → `~/.quill/keybindings.json`
+- Integrations panel with connect status
+
+### Integrations / Misc
+- Cowork webview panel
+- Multi-agent event-stream parser
+- Onboarding modal
+
 ## Defaults (CLI)
 
 - **Caveman ultra** — terse output
