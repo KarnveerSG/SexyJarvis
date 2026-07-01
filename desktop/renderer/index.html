@@ -115,6 +115,7 @@
         </div>
         <div class="ws-head-actions">
           <button type="button" class="ws-head-btn" id="ws-toggle-agent" title="Stop or start workspace agent">Stop agent</button>
+          <button type="button" class="ws-head-btn" id="ws-rules-btn" title="Edit .quill/rules.md for this workspace">Rules</button>
           <button type="button" class="ws-head-btn" id="ws-add-terminal" title="New terminal pane">+ Terminal</button>
         </div>
       </div>
@@ -225,6 +226,20 @@
   <div id="palette" class="palette hidden">
     <input id="palette-input" type="text" placeholder="> commands  @ files  # workspaces  :line" autocomplete="off" />
     <ul id="palette-list"></ul>
+  </div>
+
+  <div id="rules-modal" class="global-search hidden">
+    <div class="global-search-panel">
+      <header><span>Workspace rules — .quill/rules.md</span><button type="button" id="rules-modal-close">×</button></header>
+      <div class="spend-modal-body">
+        <p class="settings-sub">Instructions the agent should follow in this workspace. Saved to <code>.quill/rules.md</code>.</p>
+        <textarea id="rules-textarea" rows="14" style="width:100%;padding:8px;font-family:Cascadia Code, Consolas, monospace" placeholder="e.g. Always use tabs, never edit generated/ files, run npm test before finishing."></textarea>
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button type="button" class="btn-primary" id="rules-save">Save</button>
+          <span class="settings-sub" id="rules-status"></span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="recent-modal" class="global-search hidden">

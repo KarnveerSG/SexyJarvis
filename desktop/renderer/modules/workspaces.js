@@ -523,6 +523,35 @@ window.QuillModules = window.QuillModules || {};
     });
   }
 
+  async function openRulesEditor() {
+    const modal = document.getElementById("rules-modal");
+    const ta = document.getElementById("rules-textarea");
+    const status = document.getElementById("rules-status");
+    if (!modal || !ta) return;
+    const ws = activeWs();
+    if (!ws?.cwd) { showToast("Open a folder first"); return; }
+    const rulesPath = `${ws.cwd.replace(/[/\\]+$/, "")}/.quill/rules.md`;
+    ta.value = "";
+    if (status) status.textContent = "";
+    try {
+      const res = await window.quill.readFile(rulesPath);
+      if (res.ok) ta.value = res.content;
+    } catch (_) {}
+    modal.classList.remove("hidden");
+    document.getElementById("rules-save").onclick = async () => {
+      const res = await window.quill.writeFile({ filePath: rulesPath, content: ta.value, cwd: ws.cwd });
+      if (status) status.textContent = res.ok ? "Saved. Agent will pick it up on next turn." : (res.error || "Save failed");
+    };
+  }
+
+  function bindRulesEditor() {
+    document.getElementById("ws-rules-btn")?.addEventListener("click", openRulesEditor);
+    document.getElementById("rules-modal-close")?.addEventListener("click", () => document.getElementById("rules-modal")?.classList.add("hidden"));
+    document.getElementById("rules-modal")?.addEventListener("click", (e) => {
+      if (e.target?.id === "rules-modal") e.currentTarget.classList.add("hidden");
+    });
+  }
+
   function bindRecentModal() {
     document.getElementById("recent-modal-close")?.addEventListener("click", () => document.getElementById("recent-modal")?.classList.add("hidden"));
     document.getElementById("recent-modal")?.addEventListener("click", (e) => {
@@ -641,6 +670,8 @@ window.QuillModules = window.QuillModules || {};
     bindWorkspaceDrop,
     openRecentModal,
     bindRecentModal,
+    openRulesEditor,
+    bindRulesEditor,
     exportWorkspaceSync,
     importWorkspaceSync,
   };
