@@ -54,4 +54,8 @@ contextBridge.exposeInMainWorld("quill", {
   statPath: (p) => ipcRenderer.invoke("stat-path", p),
   getPrompts: () => ipcRenderer.invoke("get-prompts"),
   savePrompts: (prompts) => ipcRenderer.invoke("save-prompts", prompts),
+  historyList: (wsId) => ipcRenderer.invoke("history-list", wsId),
+  historySave: (opts) => ipcRenderer.invoke("history-save", opts),
+  historyLoad: (opts) => ipcRenderer.invoke("history-load", opts),
+  historyDelete: (opts) => ipcRenderer.invoke("history-delete", opts),
 });

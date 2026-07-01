@@ -264,6 +264,7 @@ window.QuillApp = window.QuillApp || {};
     M.agentPanel.restoreAgentChat(S().state.agentPanelWorkspaceId || S().state.activeWorkspace);
     M.agentPanel.bindAgentStreamToggle();
     M.agentPanel.bindPromptLibrary();
+    M.agentPanel.bindHistoryBrowser();
     document.getElementById("ws-add-terminal")?.addEventListener("click", () => M.terminals.addPane());
     document.getElementById("ws-toggle-agent")?.addEventListener("click", () => M.terminals.toggleWorkspaceAgent());
     document.getElementById("agent-panel-minimize")?.addEventListener("click", () => M.agentPanel.setAgentPanelMode("minimized"));

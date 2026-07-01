@@ -1044,6 +1044,40 @@ ipcMain.handle("search-files", (_e, { cwd, query, limit }) => {
   return { ok: true, files: results.slice(0, max) };
 });
 
+function historyDir(wsId) {
+  const safe = String(wsId || "default").replace(/[^\w.-]/g, "_");
+  return path.join(os.homedir(), ".quill", "history", safe);
+}
+ipcMain.handle("history-list", (_e, wsId) => {
+  const dir = historyDir(wsId);
+  if (!fs.existsSync(dir)) return { ok: true, items: [] };
+  const items = fs.readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+      return { id: f.replace(/\.json$/, ""), ts: j.ts || 0, title: j.title || "", count: (j.messages || []).length };
+    } catch { return null; }
+  }).filter(Boolean).sort((a, b) => b.ts - a.ts);
+  return { ok: true, items };
+});
+ipcMain.handle("history-save", (_e, { wsId, snapshot }) => {
+  const dir = historyDir(wsId);
+  fs.mkdirSync(dir, { recursive: true });
+  const id = `${Date.now()}`;
+  fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(snapshot || {}, null, 2), "utf8");
+  return { ok: true, id };
+});
+ipcMain.handle("history-load", (_e, { wsId, id }) => {
+  const f = path.join(historyDir(wsId), `${id}.json`);
+  if (!fs.existsSync(f)) return { ok: false, error: "not found" };
+  try { return { ok: true, snapshot: JSON.parse(fs.readFileSync(f, "utf8")) }; }
+  catch (e) { return { ok: false, error: String(e.message || e) }; }
+});
+ipcMain.handle("history-delete", (_e, { wsId, id }) => {
+  const f = path.join(historyDir(wsId), `${id}.json`);
+  try { if (fs.existsSync(f)) fs.unlinkSync(f); return { ok: true }; }
+  catch (e) { return { ok: false, error: String(e.message || e) }; }
+});
+
 function promptsPath() { return path.join(os.homedir(), ".quill", "prompts.json"); }
 ipcMain.handle("get-prompts", () => {
   const f = promptsPath();

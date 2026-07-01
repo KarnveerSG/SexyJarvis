@@ -265,6 +265,64 @@ window.QuillModules = window.QuillModules || {};
     };
   }
 
+  async function openHistoryBrowser() {
+    const modal = document.getElementById("history-modal");
+    const body = document.getElementById("history-modal-body");
+    if (!modal || !body) return;
+    const wsId = S().state.agentPanelWorkspaceId || S().state.activeWorkspace;
+    const ws = S().state.workspaces.find((w) => w.id === wsId);
+    const res = await window.quill.historyList?.(wsId) || { items: [] };
+    const rows = (res.items || []).map((it) => `
+      <div class="skill-row" style="align-items:flex-start">
+        <div style="flex:1">
+          <div><strong>${escHtml(it.title || `Snapshot ${it.id}`)}</strong></div>
+          <div class="settings-sub">${new Date(it.ts).toLocaleString()} · ${it.count} message${it.count === 1 ? "" : "s"}</div>
+        </div>
+        <button type="button" class="btn-secondary" data-h-load="${escHtml(it.id)}">Restore</button>
+        <button type="button" class="btn-secondary" data-h-del="${escHtml(it.id)}">Delete</button>
+      </div>`).join("");
+    body.innerHTML = `
+      <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+        <span class="settings-sub" style="flex:1">Workspace: <strong>${escHtml(ws?.name || "?")}</strong></span>
+        <button type="button" class="btn-primary" id="history-save-current">Save current chat</button>
+      </div>
+      ${rows || `<p class="settings-sub">No saved snapshots.</p>`}`;
+    modal.classList.remove("hidden");
+    document.getElementById("history-save-current").onclick = async () => {
+      saveAgentChat(wsId);
+      const messages = S().wsChats[wsId] || [];
+      if (!messages.length) { window.QuillModules.util.showToast("Nothing to save"); return; }
+      const title = messages.find((m) => m.role === "user")?.text?.slice(0, 60) || "Snapshot";
+      await window.quill.historySave?.({ wsId, snapshot: { ts: Date.now(), title, messages } });
+      openHistoryBrowser();
+    };
+    body.querySelectorAll("[data-h-load]").forEach((btn) => {
+      btn.onclick = async () => {
+        const id = btn.dataset.hLoad;
+        const r = await window.quill.historyLoad?.({ wsId, id });
+        if (!r?.ok) { window.QuillModules.util.showToast(r?.error || "Load failed"); return; }
+        saveAgentChat(wsId);
+        S().wsChats[wsId] = r.snapshot.messages || [];
+        restoreAgentChat(wsId);
+        modal.classList.add("hidden");
+        window.QuillModules.util.showToast("Restored");
+      };
+    });
+    body.querySelectorAll("[data-h-del]").forEach((btn) => {
+      btn.onclick = async () => {
+        await window.quill.historyDelete?.({ wsId, id: btn.dataset.hDel });
+        openHistoryBrowser();
+      };
+    });
+  }
+  function bindHistoryBrowser() {
+    document.getElementById("agent-history-btn")?.addEventListener("click", openHistoryBrowser);
+    document.getElementById("history-modal-close")?.addEventListener("click", () => document.getElementById("history-modal")?.classList.add("hidden"));
+    document.getElementById("history-modal")?.addEventListener("click", (e) => {
+      if (e.target?.id === "history-modal") e.currentTarget.classList.add("hidden");
+    });
+  }
+
   let promptsCache = null;
   async function loadPrompts() {
     if (promptsCache) return promptsCache;
@@ -385,6 +443,7 @@ window.QuillModules = window.QuillModules || {};
     populateAgentPersona,
     bindGlobalComposer,
     bindPromptLibrary,
+    bindHistoryBrowser,
     renderAgentPanelWorkspaceSelect,
     bindAgentPanelWorkspaceSelect,
   };

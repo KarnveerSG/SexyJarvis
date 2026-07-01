@@ -177,6 +177,7 @@
         <span class="agent-title">Agent</span>
         <select class="agent-ws-select" id="agent-ws-select" title="Agent chat workspace"></select>
         <select class="pane-persona-select" id="agent-persona" title="Primary pane persona"></select>
+        <button type="button" class="agent-icon-btn agent-header-btn" id="agent-history-btn" title="Conversation history">◷</button>
         <button type="button" class="agent-icon-btn agent-header-btn" id="agent-panel-minimize" title="Minimize panel">─</button>
         <button type="button" class="agent-icon-btn agent-header-btn" id="agent-panel-hide" title="Hide panel">×</button>
         <button type="button" class="agent-icon-btn agent-header-btn" id="agent-panel-expand" title="Expand panel">◀</button>
@@ -220,6 +221,13 @@
   <div id="palette" class="palette hidden">
     <input id="palette-input" type="text" placeholder="> commands  @ files  # workspaces  :line" autocomplete="off" />
     <ul id="palette-list"></ul>
+  </div>
+
+  <div id="history-modal" class="global-search hidden">
+    <div class="global-search-panel">
+      <header><span>Conversation history</span><button type="button" id="history-modal-close">×</button></header>
+      <div id="history-modal-body" class="spend-modal-body"></div>
+    </div>
   </div>
 
   <div id="prompts-modal" class="global-search hidden">
