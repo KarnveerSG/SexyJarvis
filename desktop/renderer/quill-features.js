@@ -3,7 +3,6 @@
 const QuillFeatures = (() => {
   const openTabs = new Map();
   let activeTabPath = null;
-  const pendingEdits = new Map();
   let gitFileStatus = {};
   let gutterDecoIds = [];
   let pendingEditPath = null;
@@ -261,58 +260,9 @@ const QuillFeatures = (() => {
     } else deps.showToast(res.error || "Revert failed");
   }
 
-  function renderBatchReview() {
-    const bar = document.getElementById("batch-review-bar");
-    if (!bar) return;
-    const count = pendingEdits.size;
-    if (count === 0) { bar.classList.add("hidden"); return; }
-    bar.classList.remove("hidden");
-    const label = bar.querySelector(".batch-count");
-    if (label) label.textContent = `${count} file${count > 1 ? "s" : ""} changed by agent`;
-    document.getElementById("editor-area")?.classList.remove("hidden");
-  }
-
-  function enqueueAgentEdit(filePath) {
-    if (!filePath) return;
-    pendingEdits.set(filePath, { ts: Date.now() });
-    renderBatchReview();
-  }
-
-  async function keepAllEdits() {
-    pendingEdits.clear();
-    renderBatchReview();
-    deps?.showToast?.("Kept all agent edits");
-  }
-
-  async function revertAllEdits() {
-    const ws = deps?.activeWs?.();
-    if (!ws?.cwd) return;
-    const paths = [...pendingEdits.keys()];
-    for (const p of paths) {
-      try { await window.quill.gitRevertFile({ cwd: ws.cwd, filePath: p }); } catch (_) {}
-    }
-    pendingEdits.clear();
-    renderBatchReview();
-    await deps?.refreshEditor?.();
-    await deps?.refreshGit?.();
-    deps?.showToast?.(`Reverted ${paths.length} file${paths.length !== 1 ? "s" : ""}`);
-  }
-
   function bindInlineDiff() {
-    document.getElementById("diff-accept")?.addEventListener("click", () => {
-      const p = deps?.getEditorPath?.();
-      if (p) pendingEdits.delete(p);
-      renderBatchReview();
-      void acceptEdit();
-    });
-    document.getElementById("diff-reject")?.addEventListener("click", () => {
-      const p = deps?.getEditorPath?.();
-      if (p) pendingEdits.delete(p);
-      renderBatchReview();
-      void rejectEdit();
-    });
-    document.getElementById("batch-apply-all")?.addEventListener("click", () => void keepAllEdits());
-    document.getElementById("batch-revert-all")?.addEventListener("click", () => void revertAllEdits());
+    document.getElementById("diff-accept")?.addEventListener("click", () => void acceptEdit());
+    document.getElementById("diff-reject")?.addEventListener("click", () => void rejectEdit());
   }
 
   function bindGlobalSearch() {
@@ -719,9 +669,6 @@ const QuillFeatures = (() => {
       renderTabs();
     },
     showInlineDiffBar,
-    enqueueAgentEdit,
-    getPendingEdits: () => new Map(pendingEdits),
-    clearPendingEdits: () => { pendingEdits.clear(); renderBatchReview(); },
   };
 })();
 

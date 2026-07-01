@@ -29,9 +29,7 @@ window.QuillModules = window.QuillModules || {};
         if (next) { sel.value = next.value; sel.dispatchEvent(new Event("change")); }
       }},
       { id: "undo-turn", label: "> Undo last agent turn (revert edits)", run: async () => {
-        const feat = window.QuillFeatures;
-        const pending = feat?.getPendingEdits?.();
-        const paths = pending ? [...pending.keys()] : [];
+        const paths = window.QuillCowork?.getPendingPaths?.() || [];
         const ws = window.QuillModules.workspaces.activeWs();
         if (!ws?.cwd) return;
         if (!paths.length) {
@@ -42,11 +40,10 @@ window.QuillModules = window.QuillModules || {};
         for (const p of paths) {
           try { await window.quill.gitRevertFile({ cwd: ws.cwd, filePath: p }); } catch (_) {}
         }
-        // signal CLI too, in case it implements /undo later
         const pid = ws.paneIds?.[0];
         const t = pid ? S().termInstances.get(pid) : null;
         if (t?.ptyId) window.quill.ptyWrite(t.ptyId, "/undo\r");
-        feat?.clearPendingEdits?.();
+        window.QuillCowork?.clearPending?.();
         await window.QuillModules.workspaces.refreshGitInfo();
         window.QuillModules.util.showToast(`Reverted ${paths.length} file(s)`);
       }},

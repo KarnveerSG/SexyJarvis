@@ -113,13 +113,23 @@ const QuillCowork = (() => {
     deps.showToast("All changes reverted");
   }
 
+  function normalizeUrl(u) {
+    const t = String(u || "").trim();
+    if (!t) return "";
+    if (/^[a-z]+:\/\//i.test(t) || t.startsWith("about:")) return t;
+    if (/^[\w-]+(\.[\w-]+)+/.test(t)) return `https://${t}`;
+    return `https://www.google.com/search?q=${encodeURIComponent(t)}`;
+  }
+
   function openBrowser(url) {
     const panel = document.getElementById("browser-panel");
     const view = document.getElementById("cowork-browser");
     if (!panel || !view || !url) return;
     panel.classList.remove("hidden");
-    view.src = url;
-    document.getElementById("browser-url").textContent = url;
+    const norm = normalizeUrl(url);
+    view.src = norm;
+    const inp = document.getElementById("browser-url");
+    if (inp) { if ("value" in inp) inp.value = norm; else inp.textContent = norm; }
   }
 
   function closeBrowser() {
@@ -164,9 +174,33 @@ const QuillCowork = (() => {
     document.getElementById("batch-apply-all")?.addEventListener("click", () => void applyAll());
     document.getElementById("batch-revert-all")?.addEventListener("click", () => void revertAll());
     document.getElementById("browser-panel-close")?.addEventListener("click", closeBrowser);
+    const urlEl = document.getElementById("browser-url");
+    const getUrl = () => (urlEl && "value" in urlEl ? urlEl.value : urlEl?.textContent) || "";
     document.getElementById("browser-open-external")?.addEventListener("click", () => {
-      const url = document.getElementById("browser-url")?.textContent;
+      const url = getUrl();
       if (url) window.quill.openExternal(url);
+    });
+    const view = document.getElementById("cowork-browser");
+    document.getElementById("browser-back")?.addEventListener("click", () => { try { view?.goBack?.(); } catch (_) {} });
+    document.getElementById("browser-forward")?.addEventListener("click", () => { try { view?.goForward?.(); } catch (_) {} });
+    document.getElementById("browser-reload")?.addEventListener("click", () => { try { view?.reload?.(); } catch (_) {} });
+    document.getElementById("browser-devtools")?.addEventListener("click", () => { try { view?.openDevTools?.(); } catch (_) {} });
+    if (urlEl && "value" in urlEl) {
+      urlEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const norm = normalizeUrl(urlEl.value);
+          if (norm && view) view.src = norm;
+        }
+      });
+    }
+    view?.addEventListener?.("did-navigate", (e) => {
+      const u = e?.url || view.getURL?.();
+      if (u && urlEl && "value" in urlEl) urlEl.value = u;
+    });
+    view?.addEventListener?.("did-navigate-in-page", (e) => {
+      const u = e?.url || view.getURL?.();
+      if (u && urlEl && "value" in urlEl) urlEl.value = u;
     });
   }
 
@@ -227,6 +261,7 @@ const QuillCowork = (() => {
     revertAll,
     clearPending,
     getPendingCount: () => pendingEdits.size,
+    getPendingPaths: () => [...pendingEdits.keys()],
   };
 })();
 
