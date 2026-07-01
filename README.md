@@ -184,6 +184,28 @@ Living inventory of everything Quill can do. Updated per release.
 ### Workspace rules
 - Workspace header **Rules** button opens `.quill/rules.md` editor; agent picks it up on next turn
 
+### Debugger (DAP-lite)
+- Activity bar **▶ Debug** panel with per-workspace `launch.json` configs
+- Run / stop a program; stdout/stderr stream to a docked output pane at the bottom of the editor
+- Breakpoint gutter — click a Monaco line-number to toggle; breakpoints persist per workspace
+- Breakpoint list panel with "Go" to jump to file:line
+- **Scope**: this is not a full DAP client — no stepping, frames, variable inspection. It launches, streams, and records breakpoints. A real DAP adapter can be layered on top of the same UI later.
+
+### Semantic search
+- Global search modal now has **Text | Semantic** modes
+- Semantic mode indexes workspace text files and ranks with **BM25** (no external embedding model required)
+- Cache invalidates after 5 min or on `semanticIndexClear`
+- Results include per-file BM25 score
+
+### Multi-agent handoff threading
+- Renderer emits `[QUILL:HANDOFF from=X to=Y id=Z]` markers when the composer targets a non-primary pane
+- Target pane header shows an unread **✉ N** badge, click → inbox modal
+- Handoff audit log written to each workspace's `.quill/handoffs.jsonl`
+
+### CLI `/undo`
+- `/undo` (or `/undo turn`) reverts every file edit from the last turn AND pops the last user + assistant messages from the session
+- `/undo file` keeps the old behavior of reverting only the most recent single file edit
+
 ### Embedded browser (Cowork)
 - Back / forward / reload / DevTools controls
 - URL bar (Enter to navigate; bare text falls back to Google search)
