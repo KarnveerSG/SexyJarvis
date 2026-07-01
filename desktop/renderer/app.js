@@ -136,6 +136,56 @@ window.QuillApp = window.QuillApp || {};
     };
   }
 
+  const PANEL_DEFAULTS = { side: 260, agent: 420 };
+  const PANEL_MIN = 180;
+  const PANEL_MAX_FRAC = 0.5;
+
+  function applyPanelWidths() {
+    const pw = S().state.panelWidths || {};
+    if (pw.side) document.documentElement.style.setProperty("--side-width", `${pw.side}px`);
+    if (pw.agent) document.documentElement.style.setProperty("--agent-width", `${pw.agent}px`);
+  }
+
+  function bindPanelGutters() {
+    const gutters = [
+      { el: document.getElementById("gutter-side"), key: "side", edge: "left" },
+      { el: document.getElementById("gutter-agent"), key: "agent", edge: "right" },
+    ];
+    for (const g of gutters) {
+      if (!g.el) continue;
+      g.el.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        g.el.classList.add("dragging");
+        const startX = e.clientX;
+        const startW = S().state.panelWidths?.[g.key] || PANEL_DEFAULTS[g.key];
+        const max = window.innerWidth * PANEL_MAX_FRAC;
+        const onMove = (ev) => {
+          const delta = g.edge === "left" ? ev.clientX - startX : startX - ev.clientX;
+          const next = Math.max(PANEL_MIN, Math.min(max, startW + delta));
+          if (!S().state.panelWidths) S().state.panelWidths = { ...PANEL_DEFAULTS };
+          S().state.panelWidths[g.key] = Math.round(next);
+          applyPanelWidths();
+          M.terminals.fitActiveTerminals();
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          g.el.classList.remove("dragging");
+          M.workspaces.persist();
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+      g.el.addEventListener("dblclick", () => {
+        if (!S().state.panelWidths) S().state.panelWidths = { ...PANEL_DEFAULTS };
+        S().state.panelWidths[g.key] = PANEL_DEFAULTS[g.key];
+        applyPanelWidths();
+        M.workspaces.persist();
+        M.terminals.fitActiveTerminals();
+      });
+    }
+  }
+
   function bindEvents() {
     document.getElementById("add-workspace")?.addEventListener("click", M.workspaces.addWorkspace);
     document.getElementById("settings-close")?.addEventListener("click", M.settings.closeSettings);
@@ -178,6 +228,7 @@ window.QuillApp = window.QuillApp || {};
       if (!Array.isArray(ws.openFiles)) ws.openFiles = [];
     }
     applyTheme();
+    applyPanelWidths();
     M.workspaces.renderWorkspaces();
     M.agentPanel.renderAgentPanelWorkspaceSelect();
     M.agentPanel.bindAgentPanelWorkspaceSelect();
@@ -202,6 +253,7 @@ window.QuillApp = window.QuillApp || {};
     M.editor.bindEditorDrawer();
     M.scm.bindScm();
     bindActivityBar();
+    bindPanelGutters();
     bindSideSearch();
     M.agentPanel.setAgentPanelMode(S().state.agentPanelMode || "open", { persist: false });
     void M.editor.ensureMonaco();
